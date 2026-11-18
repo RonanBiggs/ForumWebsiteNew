@@ -1,7 +1,7 @@
 // config.js - everything you're likely to tweak lives here.
 
 export const CONFIG = {
-    HOTEL_NAME: 'The Hotel',
+    HOTEL_NAME: 'Dom Forum',          // browser tab title
 
     // Sign on the wall above the lobby computer (drawn in hotel.js -> buildCorridor()).
     LOBBY_SIGN_TEXT: 'The Dom Forum',
