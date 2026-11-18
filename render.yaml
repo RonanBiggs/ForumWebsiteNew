@@ -1,0 +1,15 @@
+# Render Blueprint: Render dashboard -> New -> Blueprint -> pick this repo.
+# (Or create a "Web Service" by hand with the same settings.)
+services:
+  - type: web
+    name: hotel3d
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # Render asks you for it: paste the Neon connection string
+      - key: NODE_VERSION
+        value: "22"

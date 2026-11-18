@@ -6,9 +6,9 @@ export const CONFIG = {
     // Sign on the wall above the lobby computer (drawn in hotel.js -> buildCorridor()).
     LOBBY_SIGN_TEXT: 'Sample text: edit me in js/config.js',
 
-    // 'auto'  = use the real database (api/*.php) when the PHP backend is there,
-    //           otherwise fake demo threads stored in this browser
-    // 'php'   = always the real database      'mock' = always the demo data
+    // 'auto'   = use the server + database when it's running (npm start / Render),
+    //            otherwise fake demo threads stored in this browser
+    // 'server' = always the server            'mock' = always the demo data
     API_MODE: 'auto',
     API_BASE: 'api/',
 

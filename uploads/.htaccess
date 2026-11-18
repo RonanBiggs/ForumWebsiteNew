@@ -1,4 +1,0 @@
-# Never run scripts from the uploads folder, even if one sneaks in.
-<FilesMatch "\.(php\d?|phtml|phar|pl|py|cgi|sh|shtml)$">
-    Require all denied
-</FilesMatch>

@@ -61,6 +61,9 @@ export class Hotel {
     }
 
     addRoom(thread, relayout = true) {
+        // the same thread can arrive twice (we made it: API answer + live broadcast)
+        const existing = this.rooms.find((r) => r.id === thread.thread_id);
+        if (existing) return existing;
         const room = new Room(thread, this.mats, () => { this.dirty = true; });
         this.root.add(room.group);
         room.build();
@@ -151,6 +154,23 @@ export class Hotel {
 
     roomAt(pos) {
         return this.rooms.find((r) => r.containsPoint(pos, this._tmp)) || null;
+    }
+
+    nearestRoom(pos) {
+        let best = null, bestD = Infinity;
+        for (const r of this.rooms) {
+            const d = r.doorWorld.distanceToSquared(pos);
+            if (d < bestD) { bestD = d; best = r; }
+        }
+        return best;
+    }
+
+    // A reply arrived (ours or someone else's). Returns false if we don't know the thread.
+    addReply(reply) {
+        const room = this.rooms.find((r) => r.id === reply.post_thread);
+        if (!room) return false;
+        room.addReply(reply);
+        return true;
     }
 
     // ------------------------------------------------------------------ per frame

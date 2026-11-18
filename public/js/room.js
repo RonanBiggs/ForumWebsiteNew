@@ -187,10 +187,20 @@ export class Room {
 
     // A new reply was posted: hang it on the wall (lengthen the room if needed).
     addReply(reply) {
-        this.replies ??= [];
+        if (reply.post_date) this.thread.latest_date = reply.post_date;
+
+        // Replies not loaded yet (nobody walked near): just count it; it loads with the rest later.
+        if (!this.replies) {
+            this.thread.reply_count = (this.thread.reply_count || 0) + 1;
+            const needed = roomDepth(this.thread.reply_count);
+            if (needed > this.depth) { this.depth = needed; this.build(); }
+            return;
+        }
+        // The same reply can arrive twice (our own post: API answer + live broadcast).
+        if (this.replies.some((r) => r.post_id === reply.post_id)) return;
+
         this.replies.push(reply);
         this.thread.reply_count = this.replies.length;
-        if (reply.post_date) this.thread.latest_date = reply.post_date;
         const needed = roomDepth(this.replies.length);
         if (needed > this.depth) {
             this.depth = needed;
@@ -199,6 +209,7 @@ export class Room {
             this.addReplyObjects(reply, this.replies.length - 1);
             this.onChange();
         }
+        if (!this.station.inUse) this.station.drawIdle();      // update the reply count on the screen
     }
 
     // ------------------------------------------------------------------ per frame

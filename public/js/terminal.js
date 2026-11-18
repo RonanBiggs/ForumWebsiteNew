@@ -41,6 +41,7 @@ export class Terminal {
 
     open(station) {
         this.station = station;
+        station.inUse = true;
         this.status = '';
         this.input.value = '';
         this.form = station.kind === 'thread' ? { title: '', body: '', image: null, field: 'title' } : null;
@@ -54,6 +55,7 @@ export class Terminal {
     close() {
         if (!this.station) return;
         this.input.blur();
+        this.station.inUse = false;
         this.station.drawIdle();
         this.station = null;
         this.form = null;

@@ -11,6 +11,7 @@ import { createMaterials } from './materials.js';
 import { Hotel } from './hotel.js';
 import { Player } from './player.js';
 import { Terminal } from './terminal.js';
+import { Multiplayer } from './net.js';
 
 const $ = (id) => document.getElementById(id);
 const ui = {
@@ -52,7 +53,7 @@ const terminal = new Terminal({
     hint: ui.seatHint,
     api,
     onExit: standUp,
-    onThreadCreated: (thread) => hotel.addRoom(thread),
+    onThreadCreated: (thread) => { hotel.addRoom(thread, false); requestLayout(); },
 });
 
 // ---------------------------------------------------------------- state
@@ -275,6 +276,41 @@ const stopDrag = () => {
 canvasEl.addEventListener('pointerup', stopDrag);
 canvasEl.addEventListener('pointercancel', stopDrag);
 
+// ---------------------------------------------------------------- live updates / re-sorting rooms
+// Rooms are sorted newest-activity-first. When a thread or reply comes in, rooms
+// get re-sorted - but not while you're sitting at a computer or looking at a cube
+// (the camera animation would put you back in the wrong place), so it waits.
+let layoutPending = false;
+function requestLayout() { layoutPending = true; }
+
+function applyLayout() {
+    layoutPending = false;
+    // if we're inside a room, move with it so we don't end up inside a wall
+    const room = hotel.roomAt(camera.position);
+    let local, relQuat;
+    if (room) {
+        local = room.group.worldToLocal(camera.position.clone());
+        relQuat = room.group.quaternion.clone().invert().multiply(camera.quaternion);
+    }
+    hotel.layout();
+    if (room) {
+        camera.position.copy(room.group.localToWorld(local));
+        camera.quaternion.copy(room.group.quaternion).multiply(relQuat);
+    }
+}
+
+let net = null;     // multiplayer, only when connected to the real server
+function startMultiplayer() {
+    net = new Multiplayer({
+        scene, camera, hotel,
+        onThread: (thread) => { hotel.addRoom(thread, false); requestLayout(); },
+        onReply: (reply) => { if (hotel.addReply(reply)) requestLayout(); },
+    });
+    net.connect();
+    show($('online'));
+    setInterval(() => { $('online').textContent = `${net.online} online`; }, 1000);
+}
+
 // ---------------------------------------------------------------- loop
 let lastRoom;
 function updateRoomLabel() {
@@ -305,8 +341,11 @@ renderer.setAnimationLoop(() => {
         if (tween.t === 1) { const done = tween.done; tween = null; done(); }
     }
 
+    if (layoutPending && !tween && ['start', 'playing', 'paused'].includes(state)) applyLayout();
+
     player.update(dt, hotel.colliders());
     hotel.update(dt, camera.position);
+    net?.update(dt);
 
     if (state === 'playing') {
         target = findTarget();
@@ -323,7 +362,8 @@ try {
     await hotel.load();
     ui.enter.disabled = false;
     ui.enter.textContent = 'Enter';
-    if (await api.mode() === 'mock') $('data-mode').textContent = 'Demo data (no database connected)';
+    if (await api.mode() === 'mock') $('data-mode').textContent = 'Demo data (no server connected)';
+    else startMultiplayer();
 } catch (err) {
     console.error(err);
     ui.enter.textContent = 'Could not load the hotel';
@@ -331,4 +371,4 @@ try {
 }
 
 // Dev helpers: poke at things from the browser console, e.g. hotelDebug.camera.position
-window.hotelDebug = { THREE, renderer, scene, camera, hotel, player, api, terminal, sitDown, inspect, endInspect };
+window.hotelDebug = { THREE, renderer, scene, camera, hotel, player, api, terminal, sitDown, inspect, endInspect, get net() { return net; } };

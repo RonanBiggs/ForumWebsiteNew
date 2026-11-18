@@ -1,7 +1,0 @@
-# Make browsers check for a newer version of the code on every visit
-# (otherwise after you upload changes, visitors can get a mix of old and new files).
-<IfModule mod_headers.c>
-    <FilesMatch "\.(html|js|css)$">
-        Header set Cache-Control "no-cache"
-    </FilesMatch>
-</IfModule>

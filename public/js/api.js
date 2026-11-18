@@ -9,12 +9,12 @@
 //   Reply:  { post_id, post_content, post_date, post_thread, image (0|1), session_id }
 //           (when image = 1, post_content is the image URL, e.g. "uploads/abc.png")
 //
-// Which backend is used is set by CONFIG.API_MODE ('auto', 'php' or 'mock').
+// Which backend is used is set by CONFIG.API_MODE ('auto', 'server' or 'mock').
 
 import { CONFIG } from './config.js';
 import { mockApi } from './mockApi.js';
 
-// ---- real backend: the PHP endpoints in api/ (MySQL database) ----
+// ---- real backend: the Node server's /api endpoints (Postgres database) ----
 async function request(path, options = {}) {
     const res = await fetch(CONFIG.API_BASE + path, { credentials: 'same-origin', ...options });
     const data = await res.json().catch(() => ({ error: `Bad response from ${path}` }));
@@ -22,20 +22,20 @@ async function request(path, options = {}) {
     return data;
 }
 
-const phpApi = {
-    listThreads: () => request('threads.php'),
-    getReplies: (threadId) => request(`replies.php?thread_id=${encodeURIComponent(threadId)}`),
+const serverApi = {
+    listThreads: () => request('threads'),
+    getReplies: (threadId) => request(`replies?thread_id=${encodeURIComponent(threadId)}`),
     postReply(threadId, text) {
         const body = new FormData();
         body.append('thread_id', threadId);
         body.append('post_content', text);
-        return request('reply.php', { method: 'POST', body });
+        return request('reply', { method: 'POST', body });
     },
     uploadImage(threadId, file) {
         const body = new FormData();
         body.append('thread_id', threadId);
         body.append('image', file);
-        return request('upload.php', { method: 'POST', body });
+        return request('upload', { method: 'POST', body });
     },
     // A thread's body/image are stored as its first replies (the forum's threads
     // table only has a title), posted with the creator's poster number.
@@ -44,19 +44,19 @@ const phpApi = {
         form.append('thread_title', title);
         if (body.trim()) form.append('post_content', body);
         if (imageFile) form.append('image', imageFile);
-        return request('create_thread.php', { method: 'POST', body: form });
+        return request('create_thread', { method: 'POST', body: form });
     },
 };
 
-// 'auto': use the PHP backend if api/threads.php answers with JSON (it's installed,
+// 'auto': use the server if api/threads answers with JSON (it's running,
 // even if it reports an error, so the error gets shown instead of hidden),
 // otherwise fall back to the in-browser demo data (e.g. a plain static server).
 async function detectBackend() {
-    if (CONFIG.API_MODE === 'php') return phpApi;
+    if (CONFIG.API_MODE === 'server') return serverApi;
     if (CONFIG.API_MODE === 'mock') return mockApi;
     try {
-        const res = await fetch(CONFIG.API_BASE + 'threads.php', { credentials: 'same-origin' });
-        if ((res.headers.get('content-type') || '').includes('application/json')) return phpApi;
+        const res = await fetch(CONFIG.API_BASE + 'threads', { credentials: 'same-origin' });
+        if ((res.headers.get('content-type') || '').includes('application/json')) return serverApi;
     } catch { /* network error: no backend */ }
     return mockApi;
 }
@@ -65,8 +65,8 @@ let backendPromise = null;
 const backend = () => (backendPromise ??= detectBackend());
 
 export const api = {
-    // 'php' or 'mock' (once known)
-    async mode() { return (await backend()) === phpApi ? 'php' : 'mock'; },
+    // 'server' or 'mock' (once known)
+    async mode() { return (await backend()) === serverApi ? 'server' : 'mock'; },
     listThreads: async (...a) => (await backend()).listThreads(...a),
     getReplies: async (...a) => (await backend()).getReplies(...a),
     postReply: async (...a) => (await backend()).postReply(...a),

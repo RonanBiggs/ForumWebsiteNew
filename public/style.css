@@ -82,6 +82,7 @@ input[type="text"] {
 }
 #prompt { left: 50%; top: calc(50% + 24px); transform: translateX(-50%); white-space: nowrap; }
 #room-label { left: 16px; top: 16px; }
+#online { right: 16px; top: 16px; position: absolute; background: rgba(0, 0, 0, 0.6); padding: 4px 10px; font-size: 0.9rem; }
 #room-label small { display: block; color: #ccc; }
 #toast { left: 50%; bottom: 40px; transform: translateX(-50%); text-align: center; }
 

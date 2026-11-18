@@ -1,0 +1,21 @@
+{
+  "name": "hotel3d",
+  "version": "0.1.0",
+  "private": true,
+  "description": "First-person 3D forum: every thread is a hotel room.",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "db:setup": "node server/setup-db.js"
+  },
+  "engines": {
+    "node": ">=20.12"
+  },
+  "dependencies": {
+    "express": "^4.22.3",
+    "multer": "^2.5.0",
+    "pg": "^8.23.1",
+    "ws": "^8.23.0"
+  }
+}
