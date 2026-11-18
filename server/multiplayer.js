@@ -1,30 +1,54 @@
 // server/multiplayer.js - WebSocket at /ws: relays where everyone is standing,
 // and pushes new threads/replies to every open page so the hotel updates live.
 //
-// Client -> server: { type: 'pose', room: <thread_id>|null, x, z, ry }
+// Client -> server: { type: 'pose', room: <thread_id>|null, x, y, z, ry }   (y = height off the floor when launched)
+//                   { type: 'shot', room, x, y, z, dx, dy, dz }   (fired the gun: everyone else sees the ball)
+//                   { type: 'hit', id, room, dx, dz }              (our ball hit player `id`: they get launched)
 //                   { type: 'hb' }   (heartbeat, ignored)
 //   Positions inside/near a room are sent RELATIVE to that room, because rooms
 //   can be in a different order on different screens for a moment.
-// Server -> client: { type: 'welcome', id, players: [{ id, room, x, z, ry }] }
-//                   { type: 'pose', id, room, x, z, ry }
+// Server -> client: { type: 'welcome', id, players: [{ id, room, x, y, z, ry }] }
+//                   { type: 'pose', id, room, x, y, z, ry }
+//                   { type: 'shot', id, room, x, y, z, dx, dy, dz }   { type: 'hit', from, room, dx, dz }
 //                   { type: 'leave', id }
 //                   { type: 'thread', thread }   { type: 'reply', reply }
 
 import { WebSocketServer } from 'ws';
 
-const MAX_MSGS_PER_SEC = 30;
+const MAX_MSGS_PER_SEC = 60;          // positions (10/s) + gun spam
+
+const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e5;
+const cleanRoom = (room) => (room ?? null) === null ? null : (Number.isInteger(room) && room > 0 ? room : undefined);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 function cleanPose(msg) {
-    const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e5;
-    const room = msg.room ?? null;
-    if (room !== null && !(Number.isInteger(room) && room > 0)) return null;
+    const room = cleanRoom(msg.room);
+    if (room === undefined) return null;
     if (!num(msg.x) || !num(msg.z) || !num(msg.ry)) return null;
-    return { room, x: msg.x, z: msg.z, ry: msg.ry };
+    const y = num(msg.y) ? clamp(msg.y, 0, 3) : 0;
+    return { room, x: msg.x, y, z: msg.z, ry: msg.ry };
+}
+
+function cleanShot(msg) {
+    const room = cleanRoom(msg.room);
+    if (room === undefined) return null;
+    if (![msg.x, msg.y, msg.z, msg.dx, msg.dy, msg.dz].every(num)) return null;
+    const { x, y, z, dx, dy, dz } = msg;
+    return { room, x, y, z, dx, dy, dz };
+}
+
+function cleanHit(msg) {
+    const room = cleanRoom(msg.room);
+    if (room === undefined || !Number.isInteger(msg.id) || !num(msg.dx) || !num(msg.dz)) return null;
+    const len = Math.hypot(msg.dx, msg.dz);
+    if (len < 1e-3) return null;
+    return { room, dx: msg.dx / len, dz: msg.dz / len };    // direction only: the strength is fixed
 }
 
 export function attachMultiplayer(server) {
     const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
     const players = new Map();           // ws -> { id, pose, alive, msgs, windowStart }
+    const byId = new Map();              // id -> ws
     let nextId = 1;
 
     const send = (ws, msg) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg)); };
@@ -36,6 +60,7 @@ export function attachMultiplayer(server) {
     wss.on('connection', (ws) => {
         const me = { id: nextId++, pose: null, alive: true, msgs: 0, windowStart: Date.now() };
         players.set(ws, me);
+        byId.set(me.id, ws);
         send(ws, {
             type: 'welcome',
             id: me.id,
@@ -50,14 +75,23 @@ export function attachMultiplayer(server) {
             if (++me.msgs > MAX_MSGS_PER_SEC) return;            // flooding: drop
             let msg;
             try { msg = JSON.parse(data); } catch { return; }
-            if (msg?.type !== 'pose') return;
-            const pose = cleanPose(msg);
-            if (!pose) return;
-            me.pose = pose;
-            broadcast({ type: 'pose', id: me.id, ...pose }, ws);
+            if (msg?.type === 'pose') {
+                const pose = cleanPose(msg);
+                if (!pose) return;
+                me.pose = pose;
+                broadcast({ type: 'pose', id: me.id, ...pose }, ws);
+            } else if (msg?.type === 'shot') {
+                const shot = cleanShot(msg);
+                if (shot) broadcast({ type: 'shot', id: me.id, ...shot }, ws);
+            } else if (msg?.type === 'hit') {
+                const hit = cleanHit(msg);
+                const target = hit && msg.id !== me.id && byId.get(msg.id);
+                if (target) send(target, { type: 'hit', from: me.id, ...hit });
+            }
         });
         ws.on('close', () => {
             players.delete(ws);
+            byId.delete(me.id);
             broadcast({ type: 'leave', id: me.id });
         });
         ws.on('error', () => ws.terminate());

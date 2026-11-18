@@ -65,6 +65,18 @@ export class Terminal {
 
     attach() { if (this.station && !this.busy) this.fileInput.click(); }
 
+    // Same as pressing Enter on the last field (the Post / Create button).
+    submit() {
+        if (!this.station) return;
+        if (this.mode === 'thread') this.createThread();
+        else this.postReply();
+    }
+
+    // Same as Tab (the Next field button).
+    nextField() {
+        if (this.form) this.switchField(this.form.field === 'title' ? 'body' : 'title');
+    }
+
     // ------------------------------------------------------------------ input
     syncField() {
         if (this.form) this.form[this.form.field] = this.input.value;

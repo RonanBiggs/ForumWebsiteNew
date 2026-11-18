@@ -3,6 +3,9 @@
 //                    <-> overlay (reading a reply in full)
 //                    <-> seated  (typing at a computer: reply in a room, new thread in the lobby)
 //                    <-> inspect (looking at an image cube, drag to turn it)
+//
+// The start screen's content comes from entrance.html (see loadEntrance below).
+// On touch screens (touch.js) there's no pointer lock: on-screen buttons and drag-to-look instead.
 
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
@@ -12,14 +15,39 @@ import { Hotel } from './hotel.js';
 import { Player } from './player.js';
 import { Terminal } from './terminal.js';
 import { Multiplayer } from './net.js';
+import { Gun, knockVelocity } from './gun.js';
+import { TouchControls, isTouchDevice } from './touch.js';
 
 const $ = (id) => document.getElementById(id);
+
+// ---------------------------------------------------------------- entrance screen
+// Puts the contents of public/entrance.html into the start screen. Its <style>
+// tags come along too. If it's missing or has no Enter button, the fallback
+// inside <div id="start"> in index.html stays.
+async function loadEntrance() {
+    try {
+        const res = await fetch('entrance.html', { cache: 'no-cache' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        if (!doc.getElementById('enter-btn')) throw new Error('entrance.html needs a <button id="enter-btn">');
+        doc.querySelectorAll('style, link[rel="stylesheet"]').forEach((el) => document.head.append(el));
+        doc.querySelectorAll('script').forEach((el) => el.remove());
+        $('start').replaceChildren(...doc.body.childNodes);
+    } catch (err) {
+        console.warn('Using the built-in start screen:', err.message);
+    }
+}
+const touch = isTouchDevice();
+document.body.classList.toggle('touch', touch);
+await loadEntrance();
 const ui = {
     start: $('start'), enter: $('enter-btn'), pause: $('pause'), resume: $('resume-btn'),
     hud: $('hud'), prompt: $('prompt'), roomLabel: $('room-label'), toast: $('toast'),
     reader: $('reader'), readerPoster: $('reader-poster'), readerDate: $('reader-date'),
     readerBody: $('reader-body'), readerClose: $('reader-close'),
     seatbar: $('seatbar'), seatHint: $('seat-hint'), attach: $('attach-btn'), inspectbar: $('inspectbar'),
+    post: $('post-btn'), nextField: $('field-btn'), keyboard: $('keyboard-btn'), stand: $('stand-btn'),
+    inspectBack: $('inspect-back'),
 };
 document.title = CONFIG.HOTEL_NAME;
 
@@ -47,6 +75,8 @@ addEventListener('resize', () => {
 
 const hotel = new Hotel(scene, createMaterials(), api);
 const player = new Player(camera, renderer.domElement);
+let net = null;     // multiplayer, only when connected to the real server
+const gun = new Gun({ scene, camera, hotel, getNet: () => net });
 const terminal = new Terminal({
     input: $('term-input'),
     fileInput: $('file-input'),
@@ -60,19 +90,37 @@ const terminal = new Terminal({
 let state = 'start';
 const show = (el, on = true) => el.classList.toggle('hidden', !on);
 
+// Desktop: capture the mouse (the 'lock' event then starts playing).
+// Touch: there's no mouse to capture, so just start playing.
 function lockPointer() {
+    if (touch) return startPlaying();
     try {
         const p = renderer.domElement.requestPointerLock();
         p?.catch?.(() => show(ui.pause));          // e.g. re-locking too soon after Esc
     } catch { show(ui.pause); }
 }
 
-player.controls.addEventListener('lock', () => {
+function startPlaying() {
     state = 'playing';
     player.enabled = true;
     [ui.pause, ui.reader, ui.start].forEach((el) => show(el, false));
     show(ui.hud);
-});
+}
+function pause() {
+    if (state !== 'playing') return;
+    state = 'paused';
+    player.enabled = false;
+    show(ui.pause);
+}
+// After closing something (reader, computer, cube): desktop shows the pause
+// screen (a click is needed to capture the mouse again); touch goes straight back.
+function backToPlaying() {
+    state = 'paused';
+    if (touch) startPlaying();
+    else show(ui.pause);
+}
+
+player.controls.addEventListener('lock', startPlaying);
 player.controls.addEventListener('unlock', () => {
     player.enabled = false;
     if (state === 'playing') {        // Esc pressed while walking
@@ -82,6 +130,13 @@ player.controls.addEventListener('unlock', () => {
 });
 
 ui.enter.addEventListener('click', () => { show(ui.start, false); show(ui.hud); lockPointer(); });
+
+const touchControls = touch ? new TouchControls({
+    camera, player,
+    onFire: () => { if (state === 'playing') gun.fire(); },
+    onUse: interact,
+    onPause: pause,
+}) : null;
 ui.resume.addEventListener('click', lockPointer);
 ui.pause.addEventListener('click', (e) => { if (e.target === ui.pause) lockPointer(); });
 
@@ -130,6 +185,8 @@ addEventListener('keydown', (e) => {
     if (e.code === 'KeyE' && !e.repeat) {
         if (state === 'playing') interact();
         else if (state === 'inspect') endInspect(true);
+    } else if (e.code === 'KeyF' && state === 'playing') {
+        gun.fire();                                 // key repeat on purpose: hold F to spray
     } else if (e.key === 'Escape') {
         if (state === 'overlay') closeOverlay();
         else if (state === 'inspect') endInspect(false);
@@ -138,8 +195,8 @@ addEventListener('keydown', (e) => {
         terminal.focus();                           // focus moved away (e.g. clicked a button): grab it back
     }
 });
-renderer.domElement.addEventListener('mousedown', () => {
-    if (state === 'playing') interact();
+renderer.domElement.addEventListener('mousedown', (e) => {
+    if (state === 'playing' && e.button === 0) gun.fire();      // no ammo, no cooldown
     else if (state === 'seated') terminal.focus();
 });
 
@@ -163,8 +220,7 @@ ui.readerClose.addEventListener('click', lockPointer);
 // Esc on an overlay: close it (the pause screen asks for a click to re-lock the mouse)
 function closeOverlay() {
     show(ui.reader, false);
-    state = 'paused';
-    show(ui.pause);
+    backToPlaying();
 }
 
 // ---------------------------------------------------------------- sitting at a computer
@@ -184,6 +240,7 @@ function lookQuat(pos, look) {
 function sitDown(station) {
     state = 'seated';
     player.enabled = false;
+    player.land();
     show(ui.prompt, false);
     show(ui.hud, false);
     standingPose = { pos: camera.position.clone(), quat: camera.quaternion.clone() };
@@ -192,6 +249,8 @@ function sitDown(station) {
     const { pos, look } = station.seatPose();
     tweenCamera(pos, lookQuat(pos, look), 0.7, () => {
         show(ui.seatbar);
+        show(ui.nextField, station.kind === 'thread');
+        ui.post.textContent = station.kind === 'thread' ? 'Create thread' : 'Post';
         try {
             terminal.open(station);
         } catch (err) {
@@ -208,12 +267,16 @@ function standUp() {
     terminal.close();
     show(ui.seatbar, false);
     tweenCamera(standingPose.pos, standingPose.quat, 0.5, () => {
-        state = 'paused';
         show(ui.hud);
-        show(ui.pause);
+        backToPlaying();
     });
 }
 ui.attach.addEventListener('click', () => terminal.attach());
+// seat bar buttons (mainly for phones: no Esc / Tab keys there)
+ui.post.addEventListener('click', () => { terminal.submit(); terminal.focus(); });
+ui.nextField.addEventListener('click', () => { terminal.nextField(); terminal.focus(); });
+ui.keyboard.addEventListener('click', () => terminal.focus());
+ui.stand.addEventListener('click', standUp);
 
 // ---------------------------------------------------------------- inspecting an image cube
 let inspected = null;
@@ -222,6 +285,7 @@ let dragging = null;
 function inspect(room, cube) {
     state = 'inspect';
     player.enabled = false;
+    player.land();
     inspected = cube;
     cube.userData.held = true;            // stop its idle spin
     show(ui.prompt, false);
@@ -245,9 +309,10 @@ function endInspect(viaKeyE) {
         state = 'paused';
         // A key press (E) lets us grab the mouse again straight away; Esc doesn't.
         if (viaKeyE) lockPointer();
-        else show(ui.pause);
+        else backToPlaying();
     });
 }
+ui.inspectBack.addEventListener('click', () => endInspect(true));
 
 // click and hold to turn the cube
 const canvasEl = renderer.domElement;
@@ -299,13 +364,18 @@ function applyLayout() {
     }
 }
 
-let net = null;     // multiplayer, only when connected to the real server
 function startMultiplayer() {
     net = new Multiplayer({
         scene, camera, hotel,
         onThread: (thread) => { hotel.addRoom(thread, false); requestLayout(); },
         onReply: (reply) => { if (hotel.addReply(reply)) requestLayout(); },
+        onShot: (origin, dir) => gun.spawn(origin, dir, false),
+        onHit: (dir) => {
+            // someone shot us: fly! (not while sitting at a computer / looking at a cube)
+            if (!tween && ['start', 'playing', 'paused', 'overlay'].includes(state)) player.knockback(knockVelocity(dir));
+        },
     });
+    net.getAir = () => player.air;
     net.connect();
     show($('online'));
     setInterval(() => { $('online').textContent = `${net.online} online`; }, 1000);
@@ -343,14 +413,27 @@ renderer.setAnimationLoop(() => {
 
     if (layoutPending && !tween && ['start', 'playing', 'paused'].includes(state)) applyLayout();
 
+    // Portrait phone at a computer: widen the view so the whole screen fits.
+    const wantFov = state === 'seated' && camera.aspect < 1
+        ? Math.min(120, 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(26)) / camera.aspect)))
+        : 70;
+    if (Math.abs(camera.fov - wantFov) > 0.1) {
+        camera.fov += (wantFov - camera.fov) * (1 - Math.exp(-dt * 8));
+        camera.updateProjectionMatrix();
+    }
+
     player.update(dt, hotel.colliders());
     hotel.update(dt, camera.position);
     net?.update(dt);
+    gun.update(dt);
+    gun.setVisible(!tween && ['playing', 'paused', 'overlay'].includes(state));
+    touchControls?.setVisible(state === 'playing');
 
     if (state === 'playing') {
         target = findTarget();
-        show(ui.prompt, !!target);
+        show(ui.prompt, !!target && !touch);         // touch: the USE button shows it instead
         if (target) ui.prompt.textContent = promptFor(target);
+        touchControls?.setUse(target ? promptFor(target).replace('[E] ', '') : null);
         updateRoomLabel();
     }
 
@@ -358,17 +441,20 @@ renderer.setAnimationLoop(() => {
 });
 
 // ---------------------------------------------------------------- boot
+// The small note under the Enter button (entrance.html can leave out id="data-mode").
+function setDataMode(text) { const el = $('data-mode'); if (el) el.textContent = text; }
+
 try {
     await hotel.load();
     ui.enter.disabled = false;
-    ui.enter.textContent = 'Enter';
-    if (await api.mode() === 'mock') $('data-mode').textContent = 'Demo data (no server connected)';
+    ui.enter.textContent = ui.enter.dataset.ready || 'Enter';     // text set by data-ready="..." in entrance.html
+    if (await api.mode() === 'mock') setDataMode('Demo data (no server connected)');
     else startMultiplayer();
 } catch (err) {
     console.error(err);
     ui.enter.textContent = 'Could not load the hotel';
-    $('data-mode').textContent = 'Error: ' + err.message;
+    setDataMode('Error: ' + err.message);
 }
 
 // Dev helpers: poke at things from the browser console, e.g. hotelDebug.camera.position
-window.hotelDebug = { THREE, renderer, scene, camera, hotel, player, api, terminal, sitDown, inspect, endInspect, get net() { return net; } };
+window.hotelDebug = { THREE, renderer, scene, camera, hotel, player, api, terminal, gun, sitDown, inspect, endInspect, get net() { return net; } };

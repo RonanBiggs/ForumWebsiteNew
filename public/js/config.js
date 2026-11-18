@@ -4,7 +4,7 @@ export const CONFIG = {
     HOTEL_NAME: 'The Hotel',
 
     // Sign on the wall above the lobby computer (drawn in hotel.js -> buildCorridor()).
-    LOBBY_SIGN_TEXT: 'Sample text: edit me in js/config.js',
+    LOBBY_SIGN_TEXT: 'The Dom Forum',
 
     // 'auto'   = use the server + database when it's running (npm start / Render),
     //            otherwise fake demo threads stored in this browser

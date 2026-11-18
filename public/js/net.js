@@ -3,6 +3,8 @@
 // - Sends where you are ~10 times a second (only when you moved).
 // - Shows every other connected player as a plain pill.
 // - Receives new threads / replies that other people post, so the hotel updates live.
+// - Gun (gun.js): sends our shots so others see the balls, and tells the server
+//   when one of our balls hit someone; receives the same from others.
 //
 // Positions inside or next to a room are sent RELATIVE to that room (its thread id),
 // so a pill stays in the right room even if rooms are in a different order on
@@ -15,12 +17,15 @@ const PILL_RADIUS = 0.3;
 const PILL_HEIGHT = 1.7;         // total height, feet on the floor
 
 export class Multiplayer {
-    constructor({ scene, camera, hotel, onThread, onReply }) {
+    constructor({ scene, camera, hotel, onThread, onReply, onShot, onHit }) {
         this.scene = scene;
         this.camera = camera;
         this.hotel = hotel;
         this.onThread = onThread;
         this.onReply = onReply;
+        this.onShot = onShot;          // (origin, dir) in world space: someone else fired
+        this.onHit = onHit;            // (dir) in world space: one of their balls hit US
+        this.getAir = () => 0;         // our height above the floor (set by main.js)
         this.ws = null;
         this.players = new Map();          // id -> { mesh, pose, ready }
         this.sendTimer = 0;
@@ -74,6 +79,16 @@ export class Multiplayer {
             case 'reply':
                 this.onReply(msg.reply);
                 break;
+            case 'shot': {
+                const o = this.toWorld(msg.room, msg.x, msg.z, msg.dx, msg.dz);
+                if (o) this.onShot(new THREE.Vector3(o.x, msg.y, o.z), new THREE.Vector3(o.dx, msg.dy, o.dz));
+                break;
+            }
+            case 'hit': {
+                const o = this.toWorld(msg.room, 0, 0, msg.dx, msg.dz);
+                if (o) this.onHit(new THREE.Vector3(o.dx, 0, o.dz).normalize());
+                break;
+            }
         }
     }
 
@@ -86,7 +101,7 @@ export class Multiplayer {
             p = { mesh, pose: null, ready: false };
             this.players.set(id, p);
         }
-        p.pose = { room: pose.room ?? null, x: pose.x, z: pose.z, ry: pose.ry };
+        p.pose = { room: pose.room ?? null, x: pose.x, y: pose.y ?? 0, z: pose.z, ry: pose.ry };
     }
 
     removePlayer(id) {
@@ -94,6 +109,57 @@ export class Multiplayer {
         if (!p) return;
         this.scene.remove(p.mesh);
         this.players.delete(id);
+    }
+
+    // A point + flat direction relative to a room (or the world if room is null)
+    // -> world space using OUR room layout. null if we don't have that room.
+    toWorld(roomId, x, z, dx, dz) {
+        if (roomId === null) return { x, z, dx, dz };
+        const room = this.hotel.rooms.find((r) => r.id === roomId);
+        if (!room) return null;
+        const w = room.group.localToWorld(this._v.set(x, 0, z));
+        const a = room.group.rotation.y, c = Math.cos(a), s = Math.sin(a);
+        return { x: w.x, z: w.z, dx: dx * c + dz * s, dz: -dx * s + dz * c };
+    }
+
+    // The opposite of toWorld: world point + flat direction -> relative to `room` (or null).
+    toRoom(room, x, z, dx, dz) {
+        if (!room) return { room: null, x, z, dx, dz };
+        const l = room.group.worldToLocal(this._v.set(x, 0, z));
+        const a = -room.group.rotation.y, c = Math.cos(a), s = Math.sin(a);
+        return { room: room.id, x: l.x, z: l.z, dx: dx * c + dz * s, dz: -dx * s + dz * c };
+    }
+
+    roomFor(pos) {
+        return this.hotel.roomAt(pos) || (pos.z < 0 ? this.hotel.nearestRoom(pos) : null);
+    }
+
+    // ------------------------------------------------------------------ gun
+    sendShot(origin, dir) {
+        const r = (n) => Math.round(n * 1000) / 1000;
+        const o = this.toRoom(this.roomFor(origin), origin.x, origin.z, dir.x, dir.z);
+        this.send({ type: 'shot', room: o.room, x: r(o.x), y: r(origin.y), z: r(o.z), dx: r(o.dx), dy: r(dir.y), dz: r(o.dz) });
+    }
+
+    // Our ball hit player `id`, flying along flat direction `dir` (world space).
+    sendHit(id, dir) {
+        const p = this.players.get(id);
+        if (!p?.pose) return;
+        // in the hit player's room frame, so it points the same way on their screen
+        const room = p.pose.room === null ? null : this.hotel.rooms.find((r) => r.id === p.pose.room);
+        const o = this.toRoom(room, 0, 0, dir.x, dir.z);
+        this.send({ type: 'hit', id, room: room ? room.id : null, dx: Math.round(o.dx * 1000) / 1000, dz: Math.round(o.dz * 1000) / 1000 });
+    }
+
+    // Id of the player whose pill a ball at `p` (radius r) touches, or null.
+    pillAt(p, r) {
+        for (const [id, pl] of this.players) {
+            const m = pl.mesh;
+            if (!m.visible) continue;
+            const dx = p.x - m.position.x, dz = p.z - m.position.z;
+            if (dx * dx + dz * dz < (PILL_RADIUS + r) ** 2 && Math.abs(p.y - m.position.y) < PILL_HEIGHT / 2 + r) return id;
+        }
+        return null;
     }
 
     // Converts a received pose into world space using OUR room layout.
@@ -109,7 +175,7 @@ export class Multiplayer {
     myPose() {
         const pos = this.camera.position;
         const yaw = this._e.setFromQuaternion(this.camera.quaternion).y;
-        const room = this.hotel.roomAt(pos) || (pos.z < 0 ? this.hotel.nearestRoom(pos) : null);
+        const room = this.roomFor(pos);
         if (!room) return { room: null, x: pos.x, z: pos.z, ry: yaw };
         const local = room.group.worldToLocal(this._v.copy(pos));
         return { room: room.id, x: local.x, z: local.z, ry: yaw - room.group.rotation.y };
@@ -122,7 +188,7 @@ export class Multiplayer {
             this.sendTimer = 0;
             const pose = this.myPose();
             const r = (n) => Math.round(n * 100) / 100;
-            const msg = { type: 'pose', room: pose.room, x: r(pose.x), z: r(pose.z), ry: r(pose.ry) };
+            const msg = { type: 'pose', room: pose.room, x: r(pose.x), y: r(this.getAir()), z: r(pose.z), ry: r(pose.ry) };
             const key = JSON.stringify(msg);
             if (key !== this.lastSent) {
                 this.send(msg);
@@ -137,12 +203,13 @@ export class Multiplayer {
             if (!target) { p.mesh.visible = false; continue; }
             const m = p.mesh;
             if (!p.ready || !m.visible) {
-                m.position.set(target.x, PILL_HEIGHT / 2, target.z);
+                m.position.set(target.x, PILL_HEIGHT / 2 + p.pose.y, target.z);
                 m.rotation.y = target.ry;
                 p.ready = true;
             } else {
                 m.position.x += (target.x - m.position.x) * k;
                 m.position.z += (target.z - m.position.z) * k;
+                m.position.y += (PILL_HEIGHT / 2 + p.pose.y - m.position.y) * k;
                 m.rotation.y = target.ry;
             }
             m.visible = true;

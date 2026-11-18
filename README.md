@@ -4,12 +4,15 @@ A first-person, multiplayer **prototype** of a 3D forum. Every thread is a hotel
 Everything visual is a **placeholder**: grid textures, box furniture, plain UI, and other players shown as pills.
 
 - One continuous row of rooms down a corridor. **The most recently active thread is the first door from the lobby.**
-- The only signs are the thread titles above each room's door (plus one sample sign in the lobby).
+- The only signs are the thread titles above each room's door (plus "The Dom Forum" above the lobby computer).
 - Every reply hangs on the room's **left wall** in one row, oldest nearest the door. The room gets longer to fit them all.
 - **Image replies** also float in the room as a **cube with the image wrapped around it**. Press **E** on it to look at it, then **click and drag** to turn it.
 - **Reading:** look at a reply and press **E** to read it in full.
 - **Replying:** sit at the computer at the back of a room (**E**) and type on its screen. **Enter** posts. You can attach images.
 - **New thread:** sit at the computer in the lobby and fill in the **title**, an optional **body** and an optional **image**.
+- **Gun:** click (or F) to shoot a ball. No ammo, no cooldown. A ball that hits another player launches them across the room.
+- **Phones/tablets:** on-screen joystick (left thumb), drag to look (right thumb), a FIRE button, and a USE button that pops up when you can interact with something.
+- **Entrance screen:** its own file, `public/entrance.html` (see EDIT-INSTRUCTIONS.md).
 - **Multiplayer:** everyone on the site sees everyone else as a **pill**, live, over a WebSocket. New threads and replies show up for everybody immediately, and rooms re-sort themselves.
 
 **Stack:** three.js in the browser (no build step) · Node.js server (Express + `ws`) · PostgreSQL on Neon.
@@ -34,7 +37,8 @@ Open two browser windows to see yourself as a pill in the other one.
 | W A S D / arrows | walk |
 | Shift | run |
 | Mouse | look |
-| E or Click | interact (read a reply, look at an image cube, sit at a computer) |
+| E | interact (read a reply, look at an image cube, sit at a computer) |
+| Click / F | shoot (hold F to spray) |
 | Click + drag | turn an image cube (while looking at it) |
 | Esc | pause / stand up / step back from a cube |
 
@@ -47,8 +51,11 @@ Open two browser windows to see yourself as a pill in the other one.
 | `server/index.js` | Web server: serves `public/`, the JSON API, image downloads, spam limit |
 | `server/db.js` | All database queries (Postgres) |
 | `server/schema.sql` | The tables. Created automatically on startup, or with `npm run db:setup` |
-| `server/multiplayer.js` | WebSocket `/ws`: relays player positions, pushes new threads/replies live |
-| `public/index.html`, `public/style.css` | Page, start screen, menus, HUD |
+| `server/multiplayer.js` | WebSocket `/ws`: relays player positions and gun shots/hits, pushes new threads/replies live |
+| `public/index.html`, `public/style.css` | Page, menus, HUD, touch-control styles |
+| `public/entrance.html` | The entrance (start) screen content, loaded by main.js |
+| `public/js/gun.js` | The gun: balls, hits, the gun model |
+| `public/js/touch.js` | Phone/tablet controls: joystick, drag-to-look, FIRE/USE/pause buttons |
 | `public/js/config.js` | Hotel name, lobby sign text, data mode, speeds, model path |
 | `public/js/main.js` | Start screen, game states, interaction, camera moves, live re-sorting |
 | `public/js/net.js` | Multiplayer client: sends your position, draws other players as pills |
@@ -57,7 +64,7 @@ Open two browser windows to see yourself as a pill in the other one.
 | `public/js/computer.js` | Desk + chair + computer (rooms and lobby), optional `.glb` model |
 | `public/js/terminal.js` | Typing on the computer screens (reply / new-thread form) |
 | `public/js/textures.js`, `materials.js` | Placeholder textures/materials, signs, reply panels |
-| `public/js/player.js` | Walking + collision |
+| `public/js/player.js` | Walking + collision, touch-joystick input, flying after being shot |
 | `public/js/api.js` | Talks to the server API (or `mockApi.js` demo data when there's no server) |
 
 ### API

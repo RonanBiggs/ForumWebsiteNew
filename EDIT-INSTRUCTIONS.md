@@ -6,17 +6,30 @@ To put a change online, commit and push it: Render redeploys automatically.
 
 ---
 
-## The opening page (the "Enter" button)
+## The entrance screen (the page with the "Enter" button)
 
-| What | Where |
+It's its own file: **`public/entrance.html`**. Edit it like any web page. You can even open it straight in your browser to preview it (double-click it); then reload the game to see it in place.
+
+**How it works:** when the game starts, `js/main.js` loads `entrance.html` and copies everything inside its `<body>`, plus its `<style>` block, onto the start screen.
+
+**What you can change:**
+- **Text:** the title (`<h1>The Dom Forum</h1>`), the tagline, the controls lists. Add whatever you like inside `<div class="entrance">`, such as more paragraphs, links or a rules list.
+- **Look:** the `<style>` block at the top. `.entrance` is the full-screen background (colour, gradient, font), `.entrance h1` is the title, `.entrance #enter-btn` is the button.
+- **Images:** put the file in `public/` (e.g. `public/logo.png`) and add `<img src="logo.png" alt="">` inside the entrance div. Style it with `.entrance img { ... }`.
+- **Phone vs computer text:** anything with `class="desktop-only"` only shows on computers, `class="touch-only"` only on phones/tablets.
+- **Button text:** the button says "Loading…" until the hotel has loaded, then whatever `data-ready="..."` says (now `Enter`).
+
+**Rules (or it breaks):**
+- Keep `<button id="enter-btn" ...>`. The game looks for that id. Without it, the plain fallback start screen from `index.html` is used instead.
+- Start every CSS rule with `.entrance` so it can't restyle the rest of the game.
+- `<script>` tags are ignored. Code that runs belongs in `public/js/`.
+- `<p id="data-mode">` shows "Demo data" or load errors. You can delete it if you don't want that.
+
+| Other start-screen bits | Where |
 |---|---|
-| **Content**: the Enter button, the controls hint, the demo-data note | `public/index.html`, the block starting at `<!-- Start screen -->` (the `<div id="start">`, around line 23) |
-| **Look**: the background, the white box, the button size | `public/style.css`: `#start` (background), `.panel` (the white box), `#enter-btn` (the button) |
-| **What the button does** | `public/js/main.js`, the line `ui.enter.addEventListener('click', ...)` (around line 84). It hides the start screen and captures the mouse |
-| **"Loading…" / "Enter" text** and the "Demo data" note | `public/js/main.js`, the `// ---- boot` section at the bottom. The button stays disabled ("Loading…") until the hotel has loaded |
+| **What the button does** | `public/js/main.js`, the line `ui.enter.addEventListener('click', ...)`. It hides the start screen and starts the game |
+| **Fallback start screen** (only used if `entrance.html` can't load) | `public/index.html`, inside `<div id="start">` |
 | **Browser tab title** | `<title>` in `public/index.html`, and `HOTEL_NAME` in `public/js/config.js` (it overwrites the title) |
-
-You can add anything inside `<div id="start">`, such as a heading, an image or text. Keep the `<button id="enter-btn">`, because the code looks for that id.
 
 ---
 
@@ -24,7 +37,7 @@ You can add anything inside `<div id="start">`, such as a heading, an image or t
 
 | What | Where |
 |---|---|
-| **The text** | `public/js/config.js`: `LOBBY_SIGN_TEXT: 'Sample text: edit me in js/config.js'` |
+| **The text** | `public/js/config.js`: `LOBBY_SIGN_TEXT: 'The Dom Forum'` |
 | **Size, position, height** | `public/js/hotel.js`, inside `buildCorridor()`, below the comment `// LOBBY SIGN` (around line 130) |
 | **Look** (white background, black border, font) | `labelTexture()` in `public/js/textures.js`. The door title signs use the same function |
 
@@ -36,6 +49,31 @@ The `addSign(...)` line in `hotel.js` takes these values:
 
 To add **more signs**, copy that `addSign(...)` line and change the text and position.
 Long text shrinks to fit, and then gets cut off with "…".
+
+---
+
+## The gun
+
+Click (or **F**, hold it to spray) on a computer, **FIRE** on a phone. No ammo, no cooldown. A ball that hits another player launches them.
+
+| What | Where |
+|---|---|
+| Ball speed, size, how long balls last, how hard a hit launches people (`PUSH` sideways, `LIFT` upwards), colour | `GUN` at the top of `public/js/gun.js` |
+| The gun model in your hand (placeholder boxes) | the `// PLACEHOLDER gun model` part of the `Gun` constructor in `public/js/gun.js` |
+| Gravity / bouncing while flying after a hit | `GRAVITY` at the top of `public/js/player.js`, and `updateKnock()` |
+| Server spam limit for messages (positions + shots) | `MAX_MSGS_PER_SEC` at the top of `server/multiplayer.js` |
+
+---
+
+## Phone / tablet controls
+
+Turned on automatically on touch screens. Add `?touch=1` to the address to try them on a computer (narrow the browser window or use the browser's device mode), or `?touch=0` to force them off.
+
+| What | Where |
+|---|---|
+| Joystick, FIRE / USE / pause buttons: look and position | `public/style.css`, the `Touch controls` section at the bottom |
+| Look sensitivity, joystick size | `LOOK_SPEED`, `STICK_RADIUS` at the top of `public/js/touch.js` |
+| Buttons while sitting at a computer (Post, Next field, Keyboard, Stand up) | `<div id="seatbar">` in `public/index.html` |
 
 ---
 
