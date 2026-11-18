@@ -8,7 +8,7 @@ Everything visual is a **placeholder**: grid textures, box furniture, plain UI, 
 - Every reply hangs on the room's **left wall** in one row, oldest nearest the door. The room gets longer to fit them all.
 - **Image replies** don't get a board: they float as a **cube with the image wrapped around it** in front of the reply before them. Press **E** on it to look at it, then **click and drag** to turn it.
 - **Reading:** look at a reply and press **E** to read it in full.
-- **Replying:** sit at the computer at the back of a room (**E**) and type on its screen. **Enter** makes a new line; click **POST** on the screen to send. You can attach or paste images (PNG, JPG, GIF, WEBP; transparent PNGs make see-through cubes).
+- **Replying:** sit at the computer at the back of a room (**E**) and type on its screen. **Enter** makes a new line; click **POST** on the screen to send. You can attach or paste images (PNG, JPG, GIF, WEBP) and pick the shape they float as: cube, pyramid, sphere or icosahedron. Transparent parts are see-through and animated GIFs play.
 - **New thread:** sit at the computer in the lobby and fill in the **title**, an optional **body** and an optional **image**.
 - **Gun:** click (or F) to shoot a ball. No ammo, no cooldown. A ball that hits another player launches them across the room.
 - **Phones/tablets:** on-screen joystick (left thumb), drag to look (right thumb), a FIRE button, and a USE button that pops up when you can interact with something.

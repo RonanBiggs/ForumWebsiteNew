@@ -57,7 +57,7 @@ export function addSign(parent, texture, { w, h, x = 0, y = 0, z = 0, rotY = 0 }
 export function disposeTree(object) {
     object.traverse((o) => {
         if (!o.isMesh) return;
-        o.geometry.dispose();
+        if (!o.geometry.userData.shared) o.geometry.dispose();
         if (o.userData.ownsMaterial) {
             if (!o.userData.keepMap) o.material.map?.dispose();
             o.material.dispose();

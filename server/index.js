@@ -17,6 +17,8 @@ const PORT = Number(process.env.PORT) || 3000;
 const MAX_TEXT = 5000;
 const MAX_TITLE = 255;
 const MAX_NAME = 24;
+const SHAPES = ['cube', 'pyramid', 'sphere', 'icosahedron'];     // what an image reply floats as
+const cleanShape = (value) => (SHAPES.includes(value) ? value : 'cube');
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;     // keep small: Neon's free database is 0.5 GB in total
 const WRITES_PER_MINUTE = 10;                // per IP: posts + uploads + new threads
 
@@ -119,7 +121,7 @@ app.post('/api/upload', rateLimit, upload.single('image'), route(async (req, res
     const image = imageFromUpload(req.file);
     if (!image) throw bad('Please choose an image to upload.');
     await requireThread(threadId);
-    const reply = await db.addImageReply(req.visitorId, threadId, image);
+    const reply = await db.addImageReply(req.visitorId, threadId, image, cleanShape(req.body.shape));
     multiplayer.broadcast({ type: 'reply', reply });
     res.json(reply);
 }));
@@ -128,7 +130,7 @@ app.post('/api/create_thread', rateLimit, upload.single('image'), route(async (r
     const title = cleanText(req.body.thread_title, 'Thread title', { required: true, max: MAX_TITLE });
     const body = cleanText(req.body.post_content, 'Body');
     const image = imageFromUpload(req.file);
-    const thread = await db.createThread(req.visitorId, title, body, image);
+    const thread = await db.createThread(req.visitorId, title, body, image, cleanShape(req.body.shape));
     multiplayer.broadcast({ type: 'thread', thread });
     res.json(thread);
 }));

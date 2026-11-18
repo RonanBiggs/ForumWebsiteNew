@@ -120,7 +120,7 @@ const delay = (ms = 150) => new Promise(r => setTimeout(r, ms));
 const nowSql = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
-function addReply(threadId, content, image) {
+function addReply(threadId, content, image, shape = 'cube') {
     const thread = db.threads.find(t => t.thread_id === threadId);
     if (!thread) throw new Error('Thread not found');
     const reply = {
@@ -129,6 +129,7 @@ function addReply(threadId, content, image) {
         post_date: nowSql(),
         post_thread: threadId,
         image,
+        shape,
         session_id: posterFor(threadId),
     };
     db.replies.push(reply);
@@ -173,14 +174,14 @@ export const mockApi = {
         return addReply(threadId, text, 0);
     },
 
-    async uploadImage(threadId, file) {
+    async uploadImage(threadId, file, shape = 'cube') {
         await delay();
         checkImage(file);
-        return addReply(threadId, await fileToDataUrl(file), 1);
+        return addReply(threadId, await fileToDataUrl(file), 1, shape);
     },
 
     // Body and image become the thread's first replies, by the thread's creator.
-    async createThread(title, body = '', imageFile = null) {
+    async createThread(title, body = '', imageFile = null, shape = 'cube') {
         await delay();
         title = String(title).trim();
         body = String(body || '').trim();
@@ -200,7 +201,7 @@ export const mockApi = {
         save();
         let count = 0;
         if (body) { addReply(thread.thread_id, body, 0); count++; }
-        if (imageUrl) { addReply(thread.thread_id, imageUrl, 1); count++; }
+        if (imageUrl) { addReply(thread.thread_id, imageUrl, 1, shape); count++; }
         return { ...clone(thread), reply_count: count, latest_date: thread.thread_date };
     },
 };

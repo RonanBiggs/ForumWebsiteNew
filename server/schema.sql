@@ -52,3 +52,7 @@ CREATE TABLE IF NOT EXISTS wall_pictures (
     image_id   INTEGER     NOT NULL REFERENCES images (image_id),
     changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- What an image reply floats in the room as: 'cube', 'pyramid', 'sphere' or 'icosahedron'
+-- (picked on the computer screen when posting). Older replies are cubes.
+ALTER TABLE replies ADD COLUMN IF NOT EXISTS shape VARCHAR(16) NOT NULL DEFAULT 'cube';

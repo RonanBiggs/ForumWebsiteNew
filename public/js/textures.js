@@ -139,10 +139,11 @@ export function replyPanelTexture(reply) {
 
 // ---------- image cubes ----------
 
-// Loads an uploaded image onto a canvas texture for the image cubes. The image
-// is stretched to fill a 2:1 canvas, which then gets wrapped around the cube.
+// Loads an uploaded image onto a canvas texture for the image shapes. The image
+// is stretched to fill a 2:1 canvas, which then gets wrapped around the shape.
 // (Drawn INTO the canvas rather than replacing it: the GPU texture keeps its
 // first size, so swapping in a different-sized image would fail silently.)
+// Animated GIFs play: their frames are decoded with gifuct-js and drawn in turn.
 export function imageTexture(url) {
     const W = 1024, H = 512;
     const c = makeCanvas(W, H);
@@ -158,19 +159,80 @@ export function imageTexture(url) {
     message('#888888', 'loading…');
     const tex = toTexture(c, false);
 
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-        g.clearRect(0, 0, W, H);          // keep PNG / WEBP transparency (the cube is see-through there)
-        g.drawImage(img, 0, 0, W, H);
+    const show = (source) => {
+        g.clearRect(0, 0, W, H);          // keep PNG / WEBP / GIF transparency (the shape is see-through there)
+        g.drawImage(source, 0, 0, W, H);
         tex.needsUpdate = true;
     };
-    img.onerror = () => {
+    (async () => {
+        const bytes = await (await fetch(url)).arrayBuffer();
+        const head = new Uint8Array(bytes, 0, 4);
+        const isGif = String.fromCharCode(...head) === 'GIF8';
+        if (isGif && await playGif(bytes, show, tex)) return;
+        // still image (or a 1-frame GIF): a plain <img> also handles SVG (demo data)
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        show(img);
+    })().catch((err) => {
+        console.warn('Image failed to load', url, err);
         message('#aa0000', 'image failed to load');
         tex.needsUpdate = true;
-    };
-    img.src = url;
+    });
     return tex;
+}
+
+// ---------- animated GIFs ----------
+const GIF_LIB = 'https://cdn.jsdelivr.net/npm/gifuct-js@2.1.2/+esm';
+let gifLib = null;
+const playing = new Set();          // { draw(now) } for every GIF on screen
+let ticking = false;
+
+// Decodes the GIF and keeps calling show(canvas) with the current frame.
+// Returns false if it only has one frame (then it's shown like a still image).
+async function playGif(bytes, show, tex) {
+    gifLib ??= import(GIF_LIB);
+    const { parseGIF, decompressFrames } = await gifLib;
+    const gif = parseGIF(bytes);
+    const frames = decompressFrames(gif, true);
+    if (frames.length < 2) return false;
+
+    // Keep at most ~12 million decoded pixels (~48 MB) per GIF; very long GIFs just loop sooner.
+    let budget = 12e6, count = 0;
+    while (count < frames.length && (budget -= frames[count].dims.width * frames[count].dims.height) > 0) count++;
+    frames.length = Math.max(2, count);
+
+    // Each frame is a patch drawn over the previous picture: build it up on `full` as it plays.
+    const full = makeCanvas(gif.lsd.width, gif.lsd.height), fg = full.getContext('2d');
+    const patch = makeCanvas(1, 1), pg = patch.getContext('2d');
+    let i = 0, next = 0, prev = null;
+    const anim = {
+        draw(now) {
+            if (now < next) return;
+            if (i === 0) fg.clearRect(0, 0, full.width, full.height);
+            else if (prev?.disposalType === 2) fg.clearRect(prev.dims.left, prev.dims.top, prev.dims.width, prev.dims.height);
+            const f = frames[i];
+            const { width, height, left, top } = f.dims;
+            if (patch.width !== width || patch.height !== height) { patch.width = width; patch.height = height; }
+            pg.putImageData(new ImageData(f.patch, width, height), 0, 0);
+            fg.drawImage(patch, left, top);
+            show(full);
+            next = now + Math.max(20, f.delay || 100);
+            prev = f;
+            i = (i + 1) % frames.length;
+        },
+    };
+    playing.add(anim);
+    tex.addEventListener('dispose', () => playing.delete(anim));     // room rebuilt: stop
+    if (!ticking) {
+        ticking = true;
+        const tick = (now) => {
+            playing.forEach((a) => a.draw(now));
+            requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    }
+    return true;
 }
 
 export const FONTS = { FONT, MONO };

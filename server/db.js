@@ -47,7 +47,7 @@ const THREAD_SQL = `
     LEFT JOIN replies r ON r.post_thread = t.thread_id`;
 const THREAD_GROUP = ' GROUP BY t.thread_id';
 
-const REPLY_COLS = `post_id, post_content, ${fmt('post_date')} AS post_date, post_thread, image::int AS image, session_id`;
+const REPLY_COLS = `post_id, post_content, ${fmt('post_date')} AS post_date, post_thread, image::int AS image, session_id, shape`;
 
 // Image replies store "images/<id>"; the browser loads them from /api/images/<id>.
 function formatReply(row) {
@@ -84,11 +84,11 @@ async function posterFor(db, visitorId, threadId) {
     return rows[0].poster;
 }
 
-async function insertReply(db, threadId, content, isImage, poster) {
+async function insertReply(db, threadId, content, isImage, poster, shape = 'cube') {
     const { rows } = await db.query(
-        `INSERT INTO replies (post_content, post_thread, image, session_id) VALUES ($1, $2, $3, $4)
+        `INSERT INTO replies (post_content, post_thread, image, session_id, shape) VALUES ($1, $2, $3, $4, $5)
          RETURNING ${REPLY_COLS}`,
-        [content, threadId, isImage ? 1 : 0, poster]);
+        [content, threadId, isImage ? 1 : 0, poster, shape]);
     return formatReply(rows[0]);
 }
 
@@ -117,15 +117,15 @@ export function addTextReply(visitorId, threadId, text) {
     return transaction(async (db) => insertReply(db, threadId, text, false, await posterFor(db, visitorId, threadId)));
 }
 
-export function addImageReply(visitorId, threadId, image) {
+export function addImageReply(visitorId, threadId, image, shape) {
     return transaction(async (db) => {
         const poster = await posterFor(db, visitorId, threadId);
-        return insertReply(db, threadId, await insertImage(db, image), true, poster);
+        return insertReply(db, threadId, await insertImage(db, image), true, poster, shape);
     });
 }
 
 // New thread; the optional body and image become its first replies, by the creator.
-export function createThread(visitorId, title, body, image) {
+export function createThread(visitorId, title, body, image, shape) {
     return transaction(async (db) => {
         const { rows } = await db.query(
             `INSERT INTO threads (thread_title, session_id) VALUES ($1, nextval('poster_seq')) RETURNING thread_id, session_id`,
@@ -133,7 +133,7 @@ export function createThread(visitorId, title, body, image) {
         const { thread_id: threadId, session_id: poster } = rows[0];
         await db.query('INSERT INTO posters (visitor_id, thread_id, poster) VALUES ($1, $2, $3)', [visitorId, threadId, poster]);
         if (body) await insertReply(db, threadId, body, false, poster);
-        if (image) await insertReply(db, threadId, await insertImage(db, image), true, poster);
+        if (image) await insertReply(db, threadId, await insertImage(db, image), true, poster, shape);
         return getThread(threadId, db);
     });
 }

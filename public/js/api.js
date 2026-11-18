@@ -46,19 +46,21 @@ const serverApi = {
         body.append('post_content', text);
         return request('reply', { method: 'POST', body });
     },
-    uploadImage(threadId, file) {
+    uploadImage(threadId, file, shape = 'cube') {
         const body = new FormData();
         body.append('thread_id', threadId);
         body.append('image', file);
+        body.append('shape', shape);
         return request('upload', { method: 'POST', body });
     },
     // A thread's body/image are stored as its first replies (the forum's threads
     // table only has a title), posted with the creator's poster number.
-    createThread(title, body = '', imageFile = null) {
+    createThread(title, body = '', imageFile = null, shape = 'cube') {
         const form = new FormData();
         form.append('thread_title', title);
         if (body.trim()) form.append('post_content', body);
         if (imageFile) form.append('image', imageFile);
+        form.append('shape', shape);
         return request('create_thread', { method: 'POST', body: form });
     },
 };

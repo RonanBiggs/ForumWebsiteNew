@@ -18,9 +18,20 @@ const ATTACH = { x: 50, y: 768 - 105, w: 330, h: 70 };              // ATTACH IM
 const EXIT = { x: 1024 - 200, y: 28, w: 150, h: 52 };               // EXIT (stand up)
 const AREAS = {
     title: { y0: 100, y1: 205 },
-    body: { y0: 205, y1: 550 },
+    body: { y0: 205, y1: 500 },
     image: { y0: 550, y1: 640 },
 };
+
+// Shape picker: what an image floats as in the room. Small 2D drawings, click one to pick it.
+export const SHAPES = ['cube', 'pyramid', 'sphere', 'icosahedron'];
+function shapeRects(mode) {
+    // new-thread screen: under the IMAGE line, left of CREATE THREAD
+    // reply screen: between ATTACH IMAGE and POST
+    const size = mode === 'thread' ? 60 : 56, gap = mode === 'thread' ? 12 : 8;
+    const x0 = mode === 'thread' ? 90 : ATTACH.x + ATTACH.w + (BUTTON.x - ATTACH.x - ATTACH.w - (4 * size + 3 * gap)) / 2;
+    const y = BUTTON.y + (BUTTON.h - size) / 2;
+    return SHAPES.map((shape, i) => ({ shape, x: x0 + i * (size + gap), y, w: size, h: size }));
+}
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const inRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
@@ -36,6 +47,7 @@ export class Terminal {
         this.busy = false;
         this.blink = true;
         this.form = null;                       // thread mode: { title, body, image, field }
+        this.shape = 'cube';                    // picked shape for the next image (kept between posts)
 
         input.addEventListener('input', () => this.syncField());
         input.addEventListener('keyup', () => this.draw());          // caret moves
@@ -129,6 +141,8 @@ export class Terminal {
         if (!this.station) return false;
         if (inRect(x, y, EXIT)) { this.onExit(); return true; }
         if (inRect(x, y, BUTTON)) { this.submit(); return true; }
+        const picked = shapeRects(this.mode).find((r) => inRect(x, y, r));
+        if (picked) { this.shape = picked.shape; this.draw(); return true; }
         if (this.mode !== 'thread') {
             if (inRect(x, y, ATTACH)) { this.attach(); return true; }
             return false;
@@ -149,7 +163,7 @@ export class Terminal {
             this.status = '';
             this.draw();
         } else {
-            this.send(() => this.api.uploadImage(this.station.room.id, file), 'Image posted.')
+            this.send(() => this.api.uploadImage(this.station.room.id, file, this.shape), 'Image posted.')
                 .then((reply) => reply && this.station?.room.addReply(reply));
         }
     }
@@ -175,7 +189,7 @@ export class Terminal {
             return;
         }
         if (this.busy) return;
-        const thread = await this.send(() => this.api.createThread(title, body, image), '');
+        const thread = await this.send(() => this.api.createThread(title, body, image, this.shape), '');
         if (thread) {
             this.onThreadCreated(thread);
             this.status = `Created! Room ${thread.thread_id} is the first door down the hall.`;
@@ -228,11 +242,13 @@ export class Terminal {
         g.font = `26px ${MONO}`;
         g.fillStyle = this.status.startsWith('ERROR') ? '#ff5555' : '#dddddd';
         if (this.mode === 'thread') {
-            wrapText(g, this.status, BUTTON.x - 80).slice(0, 2).forEach((l, i) => g.fillText(l, 50, h - 95 + i * 32));
+            g.font = `24px ${MONO}`;
+            wrapText(g, this.status, w - 140).slice(0, 2).forEach((l, i) => g.fillText(l, 90, 505 + i * 26));
         } else {
             wrapText(g, this.status, w - 100).slice(0, 2).forEach((l, i) => g.fillText(l, 50, 590 + i * 32));
             this.drawButton(g, ATTACH, 'ATTACH IMAGE');
         }
+        for (const r of shapeRects(this.mode)) drawShapeIcon(g, r, r.shape === this.shape);
         this.drawButton(g, BUTTON, this.mode === 'thread' ? 'CREATE THREAD' : 'POST');
         this.drawButton(g, EXIT, 'EXIT', 28);
         st.texture.needsUpdate = true;
@@ -285,11 +301,61 @@ export class Terminal {
         g.fillStyle = '#ffffff';
         g.font = `30px ${MONO}`;
         const bodyLines = wrapText(g, this.withCursor(f.body, f.field === 'body'), w - 140);
-        bodyLines.slice(-8).forEach((l, i) => g.fillText(l, 90, 255 + i * 36));
+        bodyLines.slice(-6).forEach((l, i) => g.fillText(l, 90, 255 + i * 36));      // 6 lines, status below
 
         label('IMAGE (optional)', 560, false);
         g.fillStyle = '#ffffff';
         g.font = `28px ${MONO}`;
         g.fillText(f.image ? f.image.name : 'none: click here, or paste one (Ctrl+V)', 90, 600);
+    }
+}
+
+// One shape-picker box: a 2D line drawing of the shape. Selected = white box, dark lines.
+function drawShapeIcon(g, r, selected) {
+    const { x, y, w: s } = r;
+    g.fillStyle = selected ? '#ffffff' : '#1a1a1a';
+    g.fillRect(x, y, s, s);
+    g.strokeStyle = selected ? '#ffffff' : '#666666';
+    g.lineWidth = 2;
+    g.strokeRect(x + 1, y + 1, s - 2, s - 2);
+    g.strokeStyle = selected ? '#1a1a1a' : '#bbbbbb';
+    g.lineWidth = 2.5;
+    g.lineJoin = 'round';
+    const P = (px, py) => [x + px * s, y + py * s];          // 0..1 inside the box
+    const path = (pts, close = true) => {
+        g.beginPath();
+        pts.forEach(([px, py], i) => (i ? g.lineTo(...P(px, py)) : g.moveTo(...P(px, py))));
+        if (close) g.closePath();
+        g.stroke();
+    };
+    const lines = (pairs) => pairs.forEach(([a, b]) => path([a, b], false));
+
+    if (r.shape === 'cube') {
+        const f = [[0.2, 0.38], [0.62, 0.38], [0.62, 0.8], [0.2, 0.8]];     // front face
+        const b = f.map(([px, py]) => [px + 0.18, py - 0.18]);              // back face
+        path(f);
+        path(b);
+        lines(f.map((p, i) => [p, b[i]]));
+    } else if (r.shape === 'pyramid') {
+        const top = [0.5, 0.15], l = [0.16, 0.72], fr = [0.46, 0.85], rt = [0.84, 0.68];
+        path([l, fr, rt], false);
+        lines([[top, l], [top, fr], [top, rt]]);
+    } else if (r.shape === 'sphere') {
+        const cx = x + s / 2, cy = y + s / 2, rad = s * 0.34;
+        g.beginPath(); g.arc(cx, cy, rad, 0, Math.PI * 2); g.stroke();
+        g.beginPath(); g.ellipse(cx, cy, rad, rad * 0.35, 0, 0, Math.PI * 2); g.stroke();
+        g.beginPath(); g.ellipse(cx, cy, rad * 0.35, rad, 0, 0, Math.PI * 2); g.stroke();
+    } else {
+        // icosahedron: hexagon outline, a triangle inside, joined to the corners
+        const hex = [...Array(6)].map((_, i) => {
+            const a = -Math.PI / 2 + (i * Math.PI) / 3;
+            return [0.5 + 0.36 * Math.cos(a), 0.5 + 0.36 * Math.sin(a)];
+        });
+        const tri = [[0.5, 0.68], [0.31, 0.37], [0.69, 0.37]];
+        path(hex);
+        path(tri);
+        lines([[tri[0], hex[2]], [tri[0], hex[3]], [tri[0], hex[4]],
+               [tri[1], hex[4]], [tri[1], hex[5]], [tri[1], hex[0]],
+               [tri[2], hex[0]], [tri[2], hex[1]], [tri[2], hex[2]]]);
     }
 }

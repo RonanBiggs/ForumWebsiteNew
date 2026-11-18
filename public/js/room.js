@@ -189,7 +189,7 @@ export class Room {
                 map: imageTexture(reply.post_content), toneMapped: false,
                 transparent: true, alphaTest: 0.05, side: THREE.DoubleSide,
             });
-            const cube = new THREE.Mesh(wrappedCubeGeometry(CUBE_SIZE), cubeMat);
+            const cube = new THREE.Mesh(shapeGeometry(reply.shape), cubeMat);
             // several images after one reply: 4 in a line out from the wall, then a row above, then further along
             const out = place.cube % 4, layer = Math.floor(place.cube / 4);
             cube.position.set(x + CUBE_OUT + out * CUBE_STEP, PANEL_Y + 0.1 + (layer % 2) * CUBE_STEP, z - Math.floor(layer / 2) * CUBE_STEP);
@@ -295,6 +295,22 @@ export class Room {
         this.group.removeFromParent();
         this.station.texture.dispose();
     }
+}
+
+// What an image reply floats as (picked on the computer screen when posting).
+// All about CUBE_SIZE big; the image is wrapped around each one.
+const shapeCache = new Map();
+function shapeGeometry(shape) {
+    if (!shapeCache.has(shape)) {
+        let geo;
+        if (shape === 'sphere') geo = new THREE.SphereGeometry(CUBE_SIZE * 0.62, 32, 16);
+        else if (shape === 'pyramid') geo = new THREE.ConeGeometry(CUBE_SIZE * 0.75, CUBE_SIZE * 1.15, 4, 1).rotateY(Math.PI / 4);
+        else if (shape === 'icosahedron') geo = new THREE.IcosahedronGeometry(CUBE_SIZE * 0.7, 0);
+        else geo = wrappedCubeGeometry(CUBE_SIZE);
+        geo.userData.shared = true;                  // shared by every reply with that shape: never freed
+        shapeCache.set(shape, geo);
+    }
+    return shapeCache.get(shape);
 }
 
 // A cube whose image is WRAPPED around it (like wrapping paper) instead of

@@ -73,11 +73,15 @@ Everything is on the computer screen itself (there's no bar or instructions belo
 - Click **TITLE** or **BODY** to type there (or press Tab). **Enter makes a new line.**
 - **POST** / **CREATE THREAD** (bottom right) sends. **EXIT** (top right) stands you up (so does Esc).
 - **ATTACH IMAGE** (bottom left on reply screens) or the **IMAGE** line (new-thread screen) opens the file picker. You can also **paste an image** (Ctrl+V / Cmd+V).
-- Allowed images: PNG, JPG, GIF, WEBP. Transparent parts of a PNG / WEBP are see-through on its image cube.
+- Allowed images: PNG, JPG, GIF, WEBP. Transparent parts are see-through on the shape, and **animated GIFs play** on it.
+- **Shape picker:** the four little drawings (cube, pyramid, sphere, icosahedron) left of the POST / CREATE THREAD button. The image floats in the room as the picked shape. It's saved with the reply (`shape` column of `replies`).
 
 | What | Where |
 |---|---|
 | Clickable areas and the buttons' size/position on the screen | `BUTTON`, `ATTACH`, `EXIT` and `AREAS` at the top of `public/js/terminal.js` (in screen pixels, 1024 × 768) |
+| Shape picker: position, size, the 2D drawings | `shapeRects()` and `drawShapeIcon()` in `public/js/terminal.js` |
+| The 3D shapes (size, detail, add a new one) | `shapeGeometry()` in `public/js/room.js`. A new shape also needs adding to `SHAPES` in `terminal.js` and `server/index.js`, plus a drawing in `drawShapeIcon()` |
+| Animated GIF playback | `playGif()` in `public/js/textures.js` (uses gifuct-js from the jsDelivr CDN) |
 | Allowed image types | `imageFromUpload()` in `server/index.js` (checks the file's real contents), `IMAGE_TYPES` in `public/js/terminal.js`, `accept=` on `#file-input` in `public/index.html` |
 | Image cube see-through cut-off | `alphaTest` on the cube material in `addReplyObjects()` in `public/js/room.js` (higher = more gets cut out) |
 | How the screens are drawn | `drawReply()`, `drawThreadForm()`, `drawButton()` in `public/js/terminal.js` |
