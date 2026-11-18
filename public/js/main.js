@@ -1,5 +1,5 @@
 // main.js - sets up three.js, the start screen, and the game states:
-//   start -> playing <-> paused
+//   start -> playing <-> free    (desktop: mouse released, e.g. by the browser on Esc; click the view to carry on)
 //                    <-> overlay (reading a reply in full)
 //                    <-> seated  (typing at a computer: reply in a room, new thread in the lobby)
 //                    <-> inspect (looking at an image cube, drag to turn it)
@@ -41,7 +41,7 @@ const touch = isTouchDevice();
 document.body.classList.toggle('touch', touch);
 await loadEntrance();
 const ui = {
-    start: $('start'), enter: $('enter-btn'), pause: $('pause'), resume: $('resume-btn'),
+    start: $('start'), enter: $('enter-btn'),
     hud: $('hud'), prompt: $('prompt'), roomLabel: $('room-label'), toast: $('toast'),
     reader: $('reader'), readerPoster: $('reader-poster'), readerDate: $('reader-date'),
     readerBody: $('reader-body'), readerClose: $('reader-close'),
@@ -96,37 +96,28 @@ function lockPointer() {
     if (touch) return startPlaying();
     try {
         const p = renderer.domElement.requestPointerLock();
-        p?.catch?.(() => show(ui.pause));          // e.g. re-locking too soon after Esc
-    } catch { show(ui.pause); }
+        p?.catch?.(() => {});          // e.g. re-locking too soon after Esc: clicking the view retries
+    } catch { /* same */ }
 }
 
 function startPlaying() {
     state = 'playing';
     player.enabled = true;
-    [ui.pause, ui.reader, ui.start].forEach((el) => show(el, false));
+    [ui.reader, ui.start].forEach((el) => show(el, false));
     show(ui.hud);
 }
-function pause() {
-    if (state !== 'playing') return;
-    state = 'paused';
-    player.enabled = false;
-    show(ui.pause);
-}
-// After closing something (reader, computer, cube): desktop shows the pause
-// screen (a click is needed to capture the mouse again); touch goes straight back.
+// After closing something (reader, computer, cube): straight back to walking.
+// (Desktop: if the browser refuses to capture the mouse right now, a click on the view does it.)
 function backToPlaying() {
-    state = 'paused';
-    if (touch) startPlaying();
-    else show(ui.pause);
+    state = 'free';
+    lockPointer();
 }
 
 player.controls.addEventListener('lock', startPlaying);
 player.controls.addEventListener('unlock', () => {
     player.enabled = false;
-    if (state === 'playing') {        // Esc pressed while walking
-        state = 'paused';
-        show(ui.pause);
-    }
+    // The browser always releases the mouse on Esc. No pause menu: clicking the view carries on.
+    if (state === 'playing') state = 'free';
 });
 
 ui.enter.addEventListener('click', () => { show(ui.start, false); show(ui.hud); lockPointer(); });
@@ -135,10 +126,7 @@ const touchControls = touch ? new TouchControls({
     camera, player,
     onFire: () => { if (state === 'playing') gun.fire(); },
     onUse: interact,
-    onPause: pause,
 }) : null;
-ui.resume.addEventListener('click', lockPointer);
-ui.pause.addEventListener('click', (e) => { if (e.target === ui.pause) lockPointer(); });
 
 let toastTimer;
 function toast(msg, ms = 3500) {
@@ -184,12 +172,12 @@ function interact() {
 addEventListener('keydown', (e) => {
     if (e.code === 'KeyE' && !e.repeat) {
         if (state === 'playing') interact();
-        else if (state === 'inspect') endInspect(true);
+        else if (state === 'inspect') endInspect();
     } else if (e.code === 'KeyF' && state === 'playing') {
         gun.fire();                                 // key repeat on purpose: hold F to spray
     } else if (e.key === 'Escape') {
         if (state === 'overlay') closeOverlay();
-        else if (state === 'inspect') endInspect(false);
+        else if (state === 'inspect') endInspect();
         else if (state === 'seated') standUp();     // works even if the typing box lost focus
     } else if (state === 'seated' && !tween && document.activeElement !== terminal.input) {
         terminal.focus();                           // focus moved away (e.g. clicked a button): grab it back
@@ -197,6 +185,7 @@ addEventListener('keydown', (e) => {
 });
 renderer.domElement.addEventListener('mousedown', (e) => {
     if (state === 'playing' && e.button === 0) gun.fire();      // no ammo, no cooldown
+    else if (state === 'free') lockPointer();
     else if (state === 'seated') terminal.focus();
 });
 
@@ -217,7 +206,7 @@ function openReader(reply) {
 }
 ui.readerClose.addEventListener('click', lockPointer);
 
-// Esc on an overlay: close it (the pause screen asks for a click to re-lock the mouse)
+// Esc on an overlay: close it
 function closeOverlay() {
     show(ui.reader, false);
     backToPlaying();
@@ -298,7 +287,7 @@ function inspect(room, cube) {
     });
 }
 
-function endInspect(viaKeyE) {
+function endInspect() {
     if (state !== 'inspect' || tween) return;
     show(ui.inspectbar, false);
     renderer.domElement.style.cursor = '';
@@ -306,13 +295,10 @@ function endInspect(viaKeyE) {
     tweenCamera(standingPose.pos, standingPose.quat, 0.5, () => {
         inspected.userData.held = false;
         inspected = null;
-        state = 'paused';
-        // A key press (E) lets us grab the mouse again straight away; Esc doesn't.
-        if (viaKeyE) lockPointer();
-        else backToPlaying();
+        backToPlaying();
     });
 }
-ui.inspectBack.addEventListener('click', () => endInspect(true));
+ui.inspectBack.addEventListener('click', () => endInspect());
 
 // click and hold to turn the cube
 const canvasEl = renderer.domElement;
@@ -372,7 +358,7 @@ function startMultiplayer() {
         onShot: (origin, dir) => gun.spawn(origin, dir, false),
         onHit: (dir) => {
             // someone shot us: fly! (not while sitting at a computer / looking at a cube)
-            if (!tween && ['start', 'playing', 'paused', 'overlay'].includes(state)) player.knockback(knockVelocity(dir));
+            if (!tween && ['start', 'playing', 'free', 'overlay'].includes(state)) player.knockback(knockVelocity(dir));
         },
     });
     net.getAir = () => player.air;
@@ -411,7 +397,7 @@ renderer.setAnimationLoop(() => {
         if (tween.t === 1) { const done = tween.done; tween = null; done(); }
     }
 
-    if (layoutPending && !tween && ['start', 'playing', 'paused'].includes(state)) applyLayout();
+    if (layoutPending && !tween && ['start', 'playing', 'free'].includes(state)) applyLayout();
 
     // Portrait phone at a computer: widen the view so the whole screen fits.
     const wantFov = state === 'seated' && camera.aspect < 1
@@ -426,7 +412,7 @@ renderer.setAnimationLoop(() => {
     hotel.update(dt, camera.position);
     net?.update(dt);
     gun.update(dt);
-    gun.setVisible(!tween && ['playing', 'paused', 'overlay'].includes(state));
+    gun.setVisible(!tween && ['playing', 'free', 'overlay'].includes(state));
     touchControls?.setVisible(state === 'playing');
 
     if (state === 'playing') {

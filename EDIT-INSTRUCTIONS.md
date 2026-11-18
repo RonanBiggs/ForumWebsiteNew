@@ -13,17 +13,16 @@ It's its own file: **`public/entrance.html`**. Edit it like any web page. You ca
 **How it works:** when the game starts, `js/main.js` loads `entrance.html` and copies everything inside its `<body>`, plus its `<style>` block, onto the start screen.
 
 **What you can change:**
-- **Text:** the title (`<h1>The Dom Forum</h1>`), the tagline, the controls lists. Add whatever you like inside `<div class="entrance">`, such as more paragraphs, links or a rules list.
-- **Look:** the `<style>` block at the top. `.entrance` is the full-screen background (colour, gradient, font), `.entrance h1` is the title, `.entrance #enter-btn` is the button.
-- **Images:** put the file in `public/` (e.g. `public/logo.png`) and add `<img src="logo.png" alt="">` inside the entrance div. Style it with `.entrance img { ... }`.
-- **Phone vs computer text:** anything with `class="desktop-only"` only shows on computers, `class="touch-only"` only on phones/tablets.
-- **Button text:** the button says "Loading…" until the hotel has loaded, then whatever `data-ready="..."` says (now `Enter`).
+- **Colour:** `background: #ff69b4;` in `.entrance` (hot pink). Any CSS colour or gradient works.
+- **The button:** its text is `data-ready="The Dom Forum"` (shown once the hotel has loaded; it's greyed out until then) and the text between the tags. Its look is `.entrance #enter-btn`.
+- **Add things:** put text, links or images inside `<div class="entrance">`. Images go in `public/` (e.g. `public/logo.png`), then `<img src="logo.png" alt="">`. If you add more than the button, add `flex-direction: column; gap: 16px;` to `.entrance` so they stack.
+- **Phone vs computer:** anything with `class="desktop-only"` only shows on computers, `class="touch-only"` only on phones/tablets.
 
 **Rules (or it breaks):**
 - Keep `<button id="enter-btn" ...>`. The game looks for that id. Without it, the plain fallback start screen from `index.html` is used instead.
 - Start every CSS rule with `.entrance` so it can't restyle the rest of the game.
 - `<script>` tags are ignored. Code that runs belongs in `public/js/`.
-- `<p id="data-mode">` shows "Demo data" or load errors. You can delete it if you don't want that.
+- Optional: add `<p id="data-mode"></p>` to show "Demo data" / load errors under the button.
 
 | Other start-screen bits | Where |
 |---|---|
@@ -71,7 +70,7 @@ Turned on automatically on touch screens. Add `?touch=1` to the address to try t
 
 | What | Where |
 |---|---|
-| Joystick, FIRE / USE / pause buttons: look and position | `public/style.css`, the `Touch controls` section at the bottom |
+| Joystick, FIRE / USE buttons: look and position | `public/style.css`, the `Touch controls` section at the bottom |
 | Look sensitivity, joystick size | `LOOK_SPEED`, `STICK_RADIUS` at the top of `public/js/touch.js` |
 | Buttons while sitting at a computer (Post, Next field, Keyboard, Stand up) | `<div id="seatbar">` in `public/index.html` |
 

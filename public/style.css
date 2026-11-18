@@ -160,11 +160,6 @@ body.touch .desktop-only { display: none !important; }
     max-width: 55vw;
     animation: pop 0.15s ease-out;
 }
-.tbtn.pause {
-    right: 16px; top: 52px;
-    width: 44px; height: 44px;
-    font-size: 0.9rem;
-}
 @keyframes pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
 body.touch .bar {

@@ -40,7 +40,7 @@ Open two browser windows to see yourself as a pill in the other one.
 | E | interact (read a reply, look at an image cube, sit at a computer) |
 | Click / F | shoot (hold F to spray) |
 | Click + drag | turn an image cube (while looking at it) |
-| Esc | pause / stand up / step back from a cube |
+| Esc | stand up from a computer / step back from a cube / close a reply |
 
 `window.hotelDebug` in the browser console gives you the scene, camera, hotel, multiplayer and so on.
 
@@ -55,7 +55,7 @@ Open two browser windows to see yourself as a pill in the other one.
 | `public/index.html`, `public/style.css` | Page, menus, HUD, touch-control styles |
 | `public/entrance.html` | The entrance (start) screen content, loaded by main.js |
 | `public/js/gun.js` | The gun: balls, hits, the gun model |
-| `public/js/touch.js` | Phone/tablet controls: joystick, drag-to-look, FIRE/USE/pause buttons |
+| `public/js/touch.js` | Phone/tablet controls: joystick, drag-to-look, FIRE/USE buttons |
 | `public/js/config.js` | Hotel name, lobby sign text, data mode, speeds, model path |
 | `public/js/main.js` | Start screen, game states, interaction, camera moves, live re-sorting |
 | `public/js/net.js` | Multiplayer client: sends your position, draws other players as pills |

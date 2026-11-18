@@ -4,7 +4,6 @@
 //   Right side of the screen: drag = look around
 //   Buttons (bottom right):   FIRE, and a USE button that pops up when you're looking at
 //                             something you can use (a reply, an image cube, a computer)
-//   Pause button (top right)
 //
 // The buttons/joystick look is in style.css (the "Touch controls" section).
 
@@ -21,7 +20,7 @@ const LOOK_SPEED = 0.005;       // radians per pixel dragged
 const STICK_RADIUS = 55;        // pixels: how far the joystick knob can move
 
 export class TouchControls {
-    constructor({ camera, player, onFire, onUse, onPause }) {
+    constructor({ camera, player, onFire, onUse }) {
         this.camera = camera;
         this.player = player;
         this.euler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -40,8 +39,7 @@ export class TouchControls {
         this.knob = el('div', 'stick-knob', this.base);
         this.fireBtn = el('button', 'tbtn fire', this.root, 'FIRE');
         this.useBtn = el('button', 'tbtn use hidden', this.root, 'USE');
-        this.pauseBtn = el('button', 'tbtn pause', this.root, 'II');
-        this.fireBtn.type = this.useBtn.type = this.pauseBtn.type = 'button';
+        this.fireBtn.type = this.useBtn.type = 'button';
 
         // pointerdown (not click) so rapid taps all count and there's no delay
         const press = (btn, fn) => btn.addEventListener('pointerdown', (e) => {
@@ -51,7 +49,6 @@ export class TouchControls {
         });
         press(this.fireBtn, onFire);
         press(this.useBtn, onUse);
-        press(this.pauseBtn, onPause);
 
         this.root.addEventListener('pointerdown', (e) => this.down(e));
         this.root.addEventListener('pointermove', (e) => this.move(e));

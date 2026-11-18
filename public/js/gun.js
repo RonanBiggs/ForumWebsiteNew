@@ -36,7 +36,6 @@ export class Gun {
         // PLACEHOLDER gun model, held bottom-right of the screen (a child of the camera).
         this.model = new THREE.Group();
         const body = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.5 });
-        const tip = new THREE.MeshStandardMaterial({ color: GUN.COLOR, emissive: GUN.COLOR, emissiveIntensity: 0.6 });
         const box = (w, h, d, x, y, z, mat) => {
             const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
             m.position.set(x, y, z);
@@ -44,7 +43,6 @@ export class Gun {
         };
         box(0.07, 0.08, 0.32, 0, 0, 0, body);           // barrel
         box(0.05, 0.12, 0.06, 0, -0.09, 0.09, body);    // grip
-        box(0.075, 0.085, 0.04, 0, 0, -0.17, tip);      // glowing muzzle
         this.model.position.set(0.2, -0.17, -0.42);
         // drawn on top of everything so it never pokes into walls
         this.model.traverse((o) => {

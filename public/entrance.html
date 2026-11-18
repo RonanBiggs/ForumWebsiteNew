@@ -1,16 +1,14 @@
 <!DOCTYPE html>
 <!--
-    ENTRANCE SCREEN - the first thing visitors see, before they click Enter.
+    ENTRANCE SCREEN - the first thing visitors see. Clicking the button enters the hotel.
 
     Edit freely: text, colours, images, layout. js/main.js copies everything inside
     <body> (and the <style> below) into the start screen of the game.
     You can open this file on its own in a browser to preview it.
 
     Rules:
-      - Keep <button id="enter-btn">. data-ready="..." is the text it shows once the
-        hotel has loaded (it says "Loading…" until then).
-      - <p id="data-mode"> shows "Demo data" or error messages. You can remove it.
-      - class="desktop-only" / class="touch-only": only shown on computers / on phones.
+      - Keep <button id="enter-btn">. It's disabled until the hotel has loaded, then
+        shows the text in data-ready="...".
       - <script> tags are ignored here. Put images in public/ and use e.g. src="logo.png".
       - Start every CSS rule with .entrance so it can't change the rest of the game.
 -->
@@ -24,69 +22,31 @@
         position: fixed;
         inset: 0;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 12px;
         padding: 16px;
-        background: radial-gradient(circle at 50% 35%, #3a2e22 0%, #1a1511 70%);
-        color: #f3e9dc;
+        background: #ff69b4;            /* hot pink */
         font-family: Georgia, 'Times New Roman', serif;
-        text-align: center;
-    }
-    .entrance h1 {
-        margin: 0;
-        font-size: clamp(2.2rem, 8vw, 4rem);
-        letter-spacing: 0.06em;
-    }
-    .entrance .tagline {
-        margin: 0 0 16px;
-        color: #c9b89f;
-        font-style: italic;
     }
     .entrance #enter-btn {
         font: inherit;
-        font-size: 1.4rem;
-        padding: 12px 48px;
-        border: 2px solid #f3e9dc;
-        border-radius: 4px;
-        background: transparent;
-        color: #f3e9dc;
+        font-size: clamp(1.6rem, 6vw, 2.6rem);
+        padding: 16px 48px;
+        border: 3px solid #fff;
+        border-radius: 6px;
+        background: #fff;
+        color: #ff1493;
         cursor: pointer;
+        max-width: 100%;
     }
-    .entrance #enter-btn:hover:not(:disabled) { background: #f3e9dc; color: #1a1511; }
-    .entrance #enter-btn:disabled { opacity: 0.5; cursor: wait; }
-    .entrance .controls {
-        margin: 12px 0 0;
-        max-width: 480px;
-        color: #a8977f;
-        font-family: system-ui, Arial, sans-serif;
-        font-size: 0.85rem;
-        line-height: 1.6;
-    }
-    .entrance #data-mode { color: #e0a060; font-family: system-ui, Arial, sans-serif; font-size: 0.85rem; margin: 0; }
-
-    /* when opening this file directly: show the computer controls */
-    body:not(.touch) .entrance .touch-only { display: none; }
+    .entrance #enter-btn:hover:not(:disabled) { background: #ff1493; color: #fff; }
+    .entrance #enter-btn:disabled { opacity: 0.6; cursor: wait; }
 </style>
 </head>
 <body>
 
 <div class="entrance">
-    <h1>The Dom Forum</h1>
-    <p class="tagline">Every thread is a room. Check in.</p>
-
-    <button id="enter-btn" data-ready="Enter" disabled>Loading…</button>
-
-    <p class="controls desktop-only">
-        WASD walk · Shift run · Mouse look<br />
-        Click / F shoot · E interact · Esc pause
-    </p>
-    <p class="controls touch-only">
-        Left thumb: walk (push far to run) · Right thumb: look<br />
-        FIRE to shoot · USE pops up when you can interact
-    </p>
-    <p id="data-mode"></p>
+    <button id="enter-btn" data-ready="The Dom Forum" disabled>The Dom Forum</button>
 </div>
 
 </body>
