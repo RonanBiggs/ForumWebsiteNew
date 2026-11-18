@@ -63,7 +63,7 @@ Whatever someone types in the box on the entrance screen becomes their name **fo
 | Label above the pill: font, size, look | `NAME_FONT`, `NAME_HEIGHT` and `nameSprite()` at the top of `public/js/net.js`. The font (Pirata One) is loaded by the `fonts.googleapis.com` link in `public/index.html` |
 | **Change or delete someone's name** | In the database (Neon console → SQL editor): `UPDATE usernames SET name = 'new' WHERE name = 'old';` or `DELETE FROM usernames WHERE name = 'old';` |
 
-Everyone on the same Wi-Fi / network usually shares one IP, so they share one name.
+Everyone on the same Wi-Fi / network usually shares one IP, so they share one name. How the visitor's IP is found (behind Render's proxies) is in `server/ip.js`.
 
 ---
 
@@ -100,6 +100,8 @@ magick Assets/MyPhoto.jpg -auto-orient -resize '1600x1600>' -strip -quality 82 p
 | Where pictures can go in the lobby (and in what order) | `LOBBY_SPOTS` at the top of `public/js/hotel.js` |
 | Where they go in the corridor | `hangPictures()` in `public/js/hotel.js`: first across from each door, then in between |
 | Frame colour | `pictureMat` in the `Hotel` constructor in `public/js/hotel.js` |
+
+**Empty frames:** every spot along the corridor that doesn't have one of your pictures gets an empty frame (across from each door and between doors), so more appear as the corridor grows. Press **E** at one to hang an image in it. Those are saved as `hall-1`, `hall-2`… (by position: hall-1 is 4 m down the corridor, hall-2 8 m…). Empty-frame colour: `0xf2efe6` in `addPicture()` in `public/js/hotel.js`.
 
 **Anyone can change a picture:** walk up to a frame and press **E** (USE on phones), then pick an image. It replaces that picture for everyone, live, and stays (it's saved in the database, table `wall_pictures`). The frame resizes to the new image's shape.
 - **Put the original back:** in the Neon SQL editor, `DELETE FROM wall_pictures WHERE slot = 'assets/DomBed.jpg';` (or `DELETE FROM wall_pictures;` for all of them).
@@ -141,7 +143,8 @@ Turned on automatically on touch screens. Add `?touch=1` to the address to try t
 | Wall / floor / ceiling / furniture colours (placeholder grid textures) | `createMaterials()` in `public/js/materials.js` |
 | How a reply looks on the wall | `replyPanelTexture()` in `public/js/textures.js` |
 | Spacing of replies along the wall, and how fast rooms get longer | constants at the top of `public/js/room.js` (`SPACING`, `FIRST_Z`, `PANEL_Y`, …) and `roomDepth()` |
-| Image cube size / how far it floats from the wall | `CUBE_SIZE`, `CUBE_OUT` at the top of `public/js/room.js` |
+| Image cube size / how far it floats from the wall / gap between several cubes | `CUBE_SIZE`, `CUBE_OUT`, `CUBE_STEP` at the top of `public/js/room.js` |
+| Which board an image floats in front of (images get no board of their own) | `replyLayout()` in `public/js/room.js` |
 | How the image wraps around the cube | `wrappedCubeGeometry()` at the bottom of `public/js/room.js` |
 | The computer (desk, chair, screen) in rooms and lobby | `buildComputerDesk()` in `public/js/computer.js`. To use your own `.glb` model, see the README |
 | What the computer screens show | `public/js/terminal.js` (`drawReply`, `drawThreadForm`) and the idle screens: `drawScreenIdle()` in `public/js/room.js`, and `lobbyStation` in `public/js/hotel.js` |

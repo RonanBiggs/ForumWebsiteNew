@@ -2,10 +2,11 @@
 //
 // Local coordinates: the doorway is at z = 0 and the room extends into -z.
 // The front wall (with the door) sits at z = 0..T and faces the corridor.
-// Walking in (facing -z), the LEFT wall is at x = -W/2: every reply hangs there
-// in one row, oldest nearest the door. The room gets longer to fit them all.
-// Image replies also get a floating cube (textured with the image) in front
-// of their panel. The desk + computer is against the back wall.
+// Walking in (facing -z), the LEFT wall is at x = -W/2: every TEXT reply hangs
+// there as a board, in one row, oldest nearest the door. The room gets longer to fit them.
+// IMAGE replies don't get a board: they float as a cube (textured with the image)
+// in front of the board of the reply before them (see replyLayout below).
+// The desk + computer is against the back wall.
 //
 // Everything visual here is PLACEHOLDER geometry - replace freely.
 
@@ -24,9 +25,32 @@ const PANEL_H = PANEL_W * (PANEL_PX.h / PANEL_PX.w);
 const PANEL_Y = 1.55;
 const CUBE_SIZE = 0.6;
 const CUBE_OUT = 1.4;                     // how far the cube floats out from the wall
+const CUBE_STEP = 0.8;                    // more images after the same reply: each one this much further out
 
-export function roomDepth(replyCount) {
-    return Math.max(7.6, FIRST_Z + (replyCount - 1) * SPACING + PANEL_W / 2 + BACK_SPACE);
+// slots = how many spots along the wall are used (see replyLayout)
+export function roomDepth(slots) {
+    return Math.max(7.6, FIRST_Z + (slots - 1) * SPACING + PANEL_W / 2 + BACK_SPACE);
+}
+
+// Where each reply goes. A text reply takes the next spot ("slot") on the wall and
+// gets a board. An image reply floats as a cube in front of the most recent spot
+// (cube = 0 is closest to the wall, 1 the next one out...). Only if there's no
+// spot yet (the thread starts with an image) does it start a spot of its own, without a board.
+export function replyLayout(replies) {
+    const places = [];
+    let slot = -1;
+    let cubes = 0;
+    for (const r of replies) {
+        if (Number(r.image) === 1) {
+            if (slot < 0) { slot = 0; cubes = 0; }
+            places.push({ slot, board: false, cube: cubes++ });
+        } else {
+            slot++;
+            cubes = 0;
+            places.push({ slot, board: true, cube: -1 });
+        }
+    }
+    return { places, slots: slot + 1 };
 }
 
 export class Room {
@@ -79,7 +103,10 @@ export class Room {
         this.buildShell();
         this.buildDoor();
         this.buildComputer();
-        if (this.replies) this.replies.forEach((r, i) => this.addReplyObjects(r, i));
+        if (this.replies) {
+            const { places } = replyLayout(this.replies);
+            this.replies.forEach((r, i) => this.addReplyObjects(r, places[i]));
+        }
 
         this.updateWorldPoints();
         this.onChange();
@@ -136,22 +163,24 @@ export class Room {
     }
 
     // ------------------------------------------------------------------ replies
-    // Reply i hangs on the left wall; oldest (i = 0) nearest the door.
+    // Spot (slot) i on the left wall; oldest (i = 0) nearest the door.
     replyZ(i) { return -(FIRST_Z + i * SPACING); }
 
-    addReplyObjects(reply, i) {
+    // place = { slot, board, cube } from replyLayout()
+    addReplyObjects(reply, place) {
         const x = -ROOM.W / 2;
-        const z = this.replyZ(i);
+        const z = this.replyZ(place.slot);
 
-        const frame = addBox(this.group, { w: 0.04, h: PANEL_H + 0.08, d: PANEL_W + 0.08, x: x + 0.02, y: PANEL_Y, z, mat: this.mats.dark });
-        const mat = new THREE.MeshBasicMaterial({ map: replyPanelTexture(reply), toneMapped: false });
-        const panel = new THREE.Mesh(new THREE.PlaneGeometry(PANEL_W, PANEL_H), mat);
-        panel.position.set(x + 0.045, PANEL_Y, z);
-        panel.rotation.y = Math.PI / 2;        // face into the room (+x)
-        panel.userData.ownsMaterial = true;
-        this.group.add(panel);
-
-        let interact = { type: 'reply', reply, room: this };
+        if (place.board) {
+            const frame = addBox(this.group, { w: 0.04, h: PANEL_H + 0.08, d: PANEL_W + 0.08, x: x + 0.02, y: PANEL_Y, z, mat: this.mats.dark });
+            const mat = new THREE.MeshBasicMaterial({ map: replyPanelTexture(reply), toneMapped: false });
+            const panel = new THREE.Mesh(new THREE.PlaneGeometry(PANEL_W, PANEL_H), mat);
+            panel.position.set(x + 0.045, PANEL_Y, z);
+            panel.rotation.y = Math.PI / 2;        // face into the room (+x)
+            panel.userData.ownsMaterial = true;
+            this.group.add(panel);
+            panel.userData.interact = frame.userData.interact = { type: 'reply', reply, room: this };
+        }
 
         if (Number(reply.image) === 1) {
             // Transparent parts of a PNG / WEBP are see-through: alphaTest cuts them out,
@@ -161,17 +190,17 @@ export class Room {
                 transparent: true, alphaTest: 0.05, side: THREE.DoubleSide,
             });
             const cube = new THREE.Mesh(wrappedCubeGeometry(CUBE_SIZE), cubeMat);
-            cube.position.set(x + CUBE_OUT, PANEL_Y + 0.1, z);
+            // several images after one reply: 4 in a line out from the wall, then a row above, then further along
+            const out = place.cube % 4, layer = Math.floor(place.cube / 4);
+            cube.position.set(x + CUBE_OUT + out * CUBE_STEP, PANEL_Y + 0.1 + (layer % 2) * CUBE_STEP, z - Math.floor(layer / 2) * CUBE_STEP);
             cube.userData.ownsMaterial = true;
             cube.userData.collider = true;
             cube.userData.baseY = cube.position.y;
-            cube.userData.phase = i * 0.7;
-            interact = { type: 'image', reply, room: this, cube };
-            cube.userData.interact = interact;
+            cube.userData.phase = place.slot * 0.7 + place.cube * 1.3;
+            cube.userData.interact = { type: 'image', reply, room: this, cube };
             this.group.add(cube);
             this.cubes.push(cube);
         }
-        panel.userData.interact = frame.userData.interact = interact;
     }
 
     async load(api) {
@@ -180,7 +209,7 @@ export class Room {
         try {
             this.replies = await api.getReplies(this.id);
             this.thread.reply_count = this.replies.length;
-            this.depth = Math.max(this.depth, roomDepth(this.replies.length));
+            this.depth = roomDepth(replyLayout(this.replies).slots);   // exact now (before: a guess from the count)
             this.build();
             this.station.drawIdle();
         } catch (err) {
@@ -206,12 +235,13 @@ export class Room {
 
         this.replies.push(reply);
         this.thread.reply_count = this.replies.length;
-        const needed = roomDepth(this.replies.length);
+        const { places, slots } = replyLayout(this.replies);
+        const needed = roomDepth(slots);
         if (needed > this.depth) {
             this.depth = needed;
             this.build();
         } else {
-            this.addReplyObjects(reply, this.replies.length - 1);
+            this.addReplyObjects(reply, places[places.length - 1]);
             this.onChange();
         }
         if (!this.station.inUse) this.station.drawIdle();      // update the reply count on the screen

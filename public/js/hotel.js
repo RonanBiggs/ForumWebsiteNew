@@ -48,6 +48,7 @@ export class Hotel {
         this.lightSpots = [];
         this._tmp = new THREE.Vector3();
         this.wallImages = [];                 // [{ slot, url }]: one frame per file in public/assets/
+        this.hallImages = {};                 // { 'hall-3': url }: empty corridor frames someone filled
         this.pictureTextures = new Map();     // url -> texture (kept when the corridor is rebuilt)
         this.pictureMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 });   // frames
 
@@ -73,10 +74,12 @@ export class Hotel {
     }
 
     async load() {
-        this.wallImages = await this.api.listWallImages().catch((err) => {
+        const pictures = await this.api.listWallImages().catch((err) => {
             console.warn('No wall pictures:', err.message);
             return [];
         });
+        this.wallImages = pictures.filter((p) => !p.slot.startsWith('hall-'));
+        for (const p of pictures) if (p.slot.startsWith('hall-')) this.hallImages[p.slot] = p.url;
         const threads = await this.api.listThreads();
         threads.forEach((t) => this.addRoom(t, false));
         this.layout();
@@ -159,6 +162,8 @@ export class Hotel {
 
     // Every wall image once: alternating lobby / corridor (the corridor's left
     // wall, across from the doors). If one side is full, the rest go on the other.
+    // Every corridor spot left over gets an EMPTY frame (more appear as the corridor
+    // grows); press E at one to hang your own image there.
     hangPictures(g, L) {
         const { SLOT } = ROOM;
         const corridor = [];
@@ -171,13 +176,22 @@ export class Hotel {
             if (spot) this.addPicture(g, pic, spot);
             else console.warn('No wall space left for', pic.slot);
         });
+        for (const spot of corridor) {
+            const slot = `hall-${Math.round(-spot.z / (SLOT / 2))}`;     // by position: hall-1 is 4 m in, hall-2 8 m...
+            this.addPicture(g, { slot, url: this.hallImages[slot] || null }, spot);
+        }
     }
 
     // Someone hung a new image in a frame (us, or another player live).
     setWallImage(slot, url) {
-        const pic = this.wallImages.find((p) => p.slot === slot);
-        if (!pic || pic.url === url) return;
-        pic.url = url;
+        if (slot.startsWith('hall-')) {
+            if (this.hallImages[slot] === url) return;
+            this.hallImages[slot] = url;
+        } else {
+            const pic = this.wallImages.find((p) => p.slot === slot);
+            if (!pic || pic.url === url) return;
+            pic.url = url;
+        }
         this.buildCorridor();
     }
 
@@ -195,6 +209,14 @@ export class Hotel {
         photo.userData.keepMap = true;          // ...but the texture stays cached for the next one
         pic.add(frame, photo);
         frame.userData.interact = photo.userData.interact = { type: 'picture', slot };   // press E to change it
+
+        // empty frame (nobody hung anything here yet): blank card, portrait 3:4
+        if (!url) {
+            photo.material.color.set(0xf2efe6);
+            photo.scale.x = PICTURE.H * 0.75;
+            frame.scale.x = PICTURE.H * 0.75 + 2 * f;
+            return;
+        }
 
         // width follows the image's shape once it has loaded
         const fit = (tex) => {

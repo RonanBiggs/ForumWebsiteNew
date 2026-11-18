@@ -6,14 +6,14 @@ Everything visual is a **placeholder**: grid textures, box furniture, plain UI, 
 - One continuous row of rooms down a corridor. **The most recently active thread is the first door from the lobby.**
 - The only signs are the thread titles above each room's door (plus "The Dom Forum" above the lobby computer).
 - Every reply hangs on the room's **left wall** in one row, oldest nearest the door. The room gets longer to fit them all.
-- **Image replies** also float in the room as a **cube with the image wrapped around it**. Press **E** on it to look at it, then **click and drag** to turn it.
+- **Image replies** don't get a board: they float as a **cube with the image wrapped around it** in front of the reply before them. Press **E** on it to look at it, then **click and drag** to turn it.
 - **Reading:** look at a reply and press **E** to read it in full.
 - **Replying:** sit at the computer at the back of a room (**E**) and type on its screen. **Enter** makes a new line; click **POST** on the screen to send. You can attach or paste images (PNG, JPG, GIF, WEBP; transparent PNGs make see-through cubes).
 - **New thread:** sit at the computer in the lobby and fill in the **title**, an optional **body** and an optional **image**.
 - **Gun:** click (or F) to shoot a ball. No ammo, no cooldown. A ball that hits another player launches them across the room.
 - **Phones/tablets:** on-screen joystick (left thumb), drag to look (right thumb), a FIRE button, and a USE button that pops up when you can interact with something.
 - **Usernames:** the box on the entrance screen sets your name forever (one per IP), shown above your pill in a pirate font.
-- **Wall pictures:** every image in `public/assets/` hangs once in the lobby or the corridor (across from the doors). Press **E** at one to replace it with your own image, for everyone.
+- **Wall pictures:** every image in `public/assets/` hangs once in the lobby or the corridor (across from the doors). Press **E** at one to replace it with your own image, for everyone. Empty frames fill the rest of the corridor as it grows.
 - **Entrance screen:** its own file, `public/entrance.html` (see EDIT-INSTRUCTIONS.md).
 - **Multiplayer:** everyone on the site sees everyone else as a **pill**, live, over a WebSocket. New threads and replies show up for everybody immediately, and rooms re-sort themselves.
 

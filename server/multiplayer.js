@@ -17,6 +17,7 @@
 
 import { WebSocketServer } from 'ws';
 import { getUsername } from './db.js';
+import { clientIp } from './ip.js';
 
 const MAX_MSGS_PER_SEC = 60;          // positions (10/s) + gun spam
 
@@ -24,12 +25,6 @@ const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 
 const cleanRoom = (room) => (room ?? null) === null ? null : (Number.isInteger(room) && room > 0 ? room : undefined);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-// The visitor's IP, worked out the same way as Express's req.ip with 'trust proxy' = 1
-// (Render's proxy adds the real address as the last X-Forwarded-For entry).
-function clientIp(req) {
-    const xff = req.headers['x-forwarded-for'];
-    return xff ? xff.split(',').pop().trim() : req.socket.remoteAddress;
-}
 
 function cleanPose(msg) {
     const room = cleanRoom(msg.room);

@@ -11,6 +11,7 @@ import express from 'express';
 import multer from 'multer';
 import * as db from './db.js';
 import { attachMultiplayer } from './multiplayer.js';
+import { clientIp } from './ip.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_TEXT = 5000;
@@ -20,7 +21,7 @@ const MAX_IMAGE_BYTES = 3 * 1024 * 1024;     // keep small: Neon's free database
 const WRITES_PER_MINUTE = 10;                // per IP: posts + uploads + new threads
 
 const app = express();
-app.set('trust proxy', 1);                   // behind Render's proxy: req.ip / req.secure are the visitor's
+app.set('trust proxy', 1);                   // behind Render's proxy: req.secure is right (the visitor's IP: see ip.js)
 app.disable('x-powered-by');
 
 // ------------------------------------------------------------------ helpers
@@ -65,10 +66,11 @@ async function requireThread(threadId) {
 const writes = new Map();
 function rateLimit(req, res, next) {
     const now = Date.now();
-    const recent = (writes.get(req.ip) || []).filter((t) => now - t < 60000);
+    const ip = clientIp(req);
+    const recent = (writes.get(ip) || []).filter((t) => now - t < 60000);
     if (recent.length >= WRITES_PER_MINUTE) return next(new HttpError(429, 'Slow down a bit and try again in a minute.'));
     recent.push(now);
-    writes.set(req.ip, recent);
+    writes.set(ip, recent);
     next();
 }
 setInterval(() => {
@@ -144,7 +146,7 @@ app.get('/api/images/:id', route(async (req, res) => {
 
 // Usernames: one per IP address, set once on the entrance screen, can never be changed.
 app.get('/api/me', route(async (req, res) => {
-    res.json({ name: await db.getUsername(req.ip) });
+    res.json({ name: await db.getUsername(clientIp(req)) });
 }));
 
 app.post('/api/name', rateLimit, upload.none(), route(async (req, res) => {
@@ -152,8 +154,9 @@ app.post('/api/name', rateLimit, upload.none(), route(async (req, res) => {
         .replace(/[\p{C}]/gu, '')            // no control / invisible characters
         .replace(/\s+/g, ' ');
     if (!name) throw bad('Name cannot be empty.');
-    const saved = await db.claimUsername(req.ip, name);   // already had one: keeps the old one
-    multiplayer.setName(req.ip, saved);
+    const ip = clientIp(req);
+    const saved = await db.claimUsername(ip, name);   // already had one: keeps the old one
+    multiplayer.setName(ip, saved);
     res.json({ name: saved });
 }));
 
@@ -168,15 +171,20 @@ async function wallSlots() {
         .map((f) => 'assets/' + encodeURIComponent(f));
 }
 
-// [{ slot, url }]: url is the replacement if someone changed it, else the original file
+// Empty frames along the corridor are slots too: "hall-1", "hall-2"... (by position).
+const HALL_SLOT = /^hall-\d{1,5}$/;
+
+// [{ slot, url }]: every file in public/assets/ (url = the replacement if someone
+// changed it, else the original file), then every corridor frame someone filled.
 app.get('/api/wall-images', route(async (req, res) => {
     const [slots, replaced] = await Promise.all([wallSlots(), db.getWallPictures()]);
-    res.json(slots.map((slot) => ({ slot, url: replaced[slot] || slot })));
+    const hall = Object.keys(replaced).filter((s) => HALL_SLOT.test(s)).map((slot) => ({ slot, url: replaced[slot] }));
+    res.json([...slots.map((slot) => ({ slot, url: replaced[slot] || slot })), ...hall]);
 }));
 
 app.post('/api/wall-image', rateLimit, upload.single('image'), route(async (req, res) => {
     const slot = String(req.body.slot || '');
-    if (!(await wallSlots()).includes(slot)) throw bad('That picture frame does not exist.');
+    if (!HALL_SLOT.test(slot) && !(await wallSlots()).includes(slot)) throw bad('That picture frame does not exist.');
     const image = imageFromUpload(req.file);
     if (!image) throw bad('Please choose an image.');
     const url = await db.setWallPicture(slot, image);
