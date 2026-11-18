@@ -59,8 +59,12 @@ export function disposeTree(object) {
         if (!o.isMesh) return;
         if (!o.geometry.userData.shared) o.geometry.dispose();
         if (o.userData.ownsMaterial) {
-            if (!o.userData.keepMap) o.material.map?.dispose();
-            o.material.dispose();
+            for (const m of [].concat(o.material)) {         // one material, or a list (3D models)
+                if (!o.userData.keepMap) {
+                    for (const key of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap']) m[key]?.dispose?.();
+                }
+                m.dispose();
+            }
         }
     });
 }

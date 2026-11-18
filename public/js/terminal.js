@@ -9,6 +9,7 @@
 
 import { wrapText, FONTS } from './textures.js';
 import { drawScreenBackground } from './computer.js';
+import { MODEL_EXTENSIONS } from './models.js';
 
 const MONO = FONTS.MONO;
 
@@ -163,7 +164,8 @@ export class Terminal {
             this.status = '';
             this.draw();
         } else {
-            this.send(() => this.api.uploadImage(this.station.room.id, file, this.shape), 'Image posted.')
+            const isModel = MODEL_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext));
+            this.send(() => this.api.uploadImage(this.station.room.id, file, this.shape), isModel ? '3D model posted.' : 'Image posted.')
                 .then((reply) => reply && this.station?.room.addReply(reply));
         }
     }
@@ -246,7 +248,7 @@ export class Terminal {
             wrapText(g, this.status, w - 140).slice(0, 2).forEach((l, i) => g.fillText(l, 90, 505 + i * 26));
         } else {
             wrapText(g, this.status, w - 100).slice(0, 2).forEach((l, i) => g.fillText(l, 50, 590 + i * 32));
-            this.drawButton(g, ATTACH, 'ATTACH IMAGE');
+            this.drawButton(g, ATTACH, 'ATTACH');           // an image or a 3D model
         }
         for (const r of shapeRects(this.mode)) drawShapeIcon(g, r, r.shape === this.shape);
         this.drawButton(g, BUTTON, this.mode === 'thread' ? 'CREATE THREAD' : 'POST');
@@ -303,7 +305,7 @@ export class Terminal {
         const bodyLines = wrapText(g, this.withCursor(f.body, f.field === 'body'), w - 140);
         bodyLines.slice(-6).forEach((l, i) => g.fillText(l, 90, 255 + i * 36));      // 6 lines, status below
 
-        label('IMAGE (optional)', 560, false);
+        label('IMAGE / 3D MODEL (optional)', 560, false);
         g.fillStyle = '#ffffff';
         g.font = `28px ${MONO}`;
         g.fillText(f.image ? f.image.name : 'none: click here, or paste one (Ctrl+V)', 90, 600);

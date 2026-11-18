@@ -1,7 +1,8 @@
 // server/db.js - Postgres (Neon) connection + every query the forum needs.
 // Rows come back in the same shape the 3D client already uses:
 //   Thread: { thread_id, thread_title, thread_date, session_id, reply_count, latest_date }
-//   Reply:  { post_id, post_content, post_date, post_thread, image, session_id }
+//   Reply:  { post_id, post_content, post_date, post_thread, image, session_id, shape }
+//           image: 0 = text, 1 = image, 2 = 3D model (post_content is then the file's URL)
 
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -51,7 +52,7 @@ const REPLY_COLS = `post_id, post_content, ${fmt('post_date')} AS post_date, pos
 
 // Image replies store "images/<id>"; the browser loads them from /api/images/<id>.
 function formatReply(row) {
-    if (row.image === 1 && row.post_content.startsWith('images/')) {
+    if (row.image >= 1 && row.post_content.startsWith('images/')) {      // images and 3D models
         row.post_content = 'api/' + row.post_content;
     }
     return row;
@@ -84,13 +85,17 @@ async function posterFor(db, visitorId, threadId) {
     return rows[0].poster;
 }
 
-async function insertReply(db, threadId, content, isImage, poster, shape = 'cube') {
+// kind: 0 text, 1 image, 2 3D model
+async function insertReply(db, threadId, content, kind, poster, shape = 'cube') {
     const { rows } = await db.query(
         `INSERT INTO replies (post_content, post_thread, image, session_id, shape) VALUES ($1, $2, $3, $4, $5)
          RETURNING ${REPLY_COLS}`,
-        [content, threadId, isImage ? 1 : 0, poster, shape]);
+        [content, threadId, kind, poster, shape]);
     return formatReply(rows[0]);
 }
+
+// Uploaded files (images and 3D models) both live in the images table.
+const fileKind = (file) => (file.kind === 'model' ? 2 : 1);
 
 async function insertImage(db, image) {
     const { rows } = await db.query('INSERT INTO images (mime, data) VALUES ($1, $2) RETURNING image_id', [image.mime, image.data]);
@@ -114,13 +119,13 @@ async function transaction(fn) {
 }
 
 export function addTextReply(visitorId, threadId, text) {
-    return transaction(async (db) => insertReply(db, threadId, text, false, await posterFor(db, visitorId, threadId)));
+    return transaction(async (db) => insertReply(db, threadId, text, 0, await posterFor(db, visitorId, threadId)));
 }
 
 export function addImageReply(visitorId, threadId, image, shape) {
     return transaction(async (db) => {
         const poster = await posterFor(db, visitorId, threadId);
-        return insertReply(db, threadId, await insertImage(db, image), true, poster, shape);
+        return insertReply(db, threadId, await insertImage(db, image), fileKind(image), poster, shape);
     });
 }
 
@@ -132,8 +137,8 @@ export function createThread(visitorId, title, body, image, shape) {
             [title]);
         const { thread_id: threadId, session_id: poster } = rows[0];
         await db.query('INSERT INTO posters (visitor_id, thread_id, poster) VALUES ($1, $2, $3)', [visitorId, threadId, poster]);
-        if (body) await insertReply(db, threadId, body, false, poster);
-        if (image) await insertReply(db, threadId, await insertImage(db, image), true, poster, shape);
+        if (body) await insertReply(db, threadId, body, 0, poster);
+        if (image) await insertReply(db, threadId, await insertImage(db, image), fileKind(image), poster, shape);
         return getThread(threadId, db);
     });
 }

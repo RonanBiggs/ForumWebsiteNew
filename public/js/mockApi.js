@@ -137,12 +137,22 @@ function addReply(threadId, content, image, shape = 'cube') {
     return clone(reply);
 }
 
+// Demo-mode 3D models: the type comes from the file name (browsers don't know these types).
+const MODEL_TYPES = { '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.obj': 'model/obj', '.stl': 'model/stl', '.fbx': 'model/fbx' };
+const modelType = (file) => MODEL_TYPES[Object.keys(MODEL_TYPES).find((ext) => file.name.toLowerCase().endsWith(ext))];
+
 function checkImage(file) {
-    if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) throw new Error('Only PNG, JPG, JPEG, GIF and WEBP files are allowed');
+    if (modelType(file)) {
+        if (file.size > 10e6) throw new Error('File is too large');
+        return;
+    }
+    if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) throw new Error('Only images (PNG, JPG, GIF, WEBP) and 3D models (GLB, glTF, OBJ, STL, FBX) are allowed');
     if (file.size > 5000000) throw new Error('File is too large');
 }
 
 function fileToDataUrl(file) {
+    const type = modelType(file);
+    if (type) file = new File([file], file.name, { type });     // so the data URL says which model format
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
@@ -177,7 +187,7 @@ export const mockApi = {
     async uploadImage(threadId, file, shape = 'cube') {
         await delay();
         checkImage(file);
-        return addReply(threadId, await fileToDataUrl(file), 1, shape);
+        return addReply(threadId, await fileToDataUrl(file), modelType(file) ? 2 : 1, shape);
     },
 
     // Body and image become the thread's first replies, by the thread's creator.
@@ -201,7 +211,7 @@ export const mockApi = {
         save();
         let count = 0;
         if (body) { addReply(thread.thread_id, body, 0); count++; }
-        if (imageUrl) { addReply(thread.thread_id, imageUrl, 1, shape); count++; }
+        if (imageUrl) { addReply(thread.thread_id, imageUrl, modelType(imageFile) ? 2 : 1, shape); count++; }
         return { ...clone(thread), reply_count: count, latest_date: thread.thread_date };
     },
 };

@@ -11,10 +11,10 @@ CREATE TABLE IF NOT EXISTS threads (
 
 CREATE TABLE IF NOT EXISTS replies (
     post_id      SERIAL PRIMARY KEY,
-    post_content TEXT         NOT NULL,                   -- text, or "images/<id>" when image = 1
+    post_content TEXT         NOT NULL,                   -- text, or "images/<id>" when image = 1 (image) or 2 (3D model)
     post_date    TIMESTAMPTZ  NOT NULL DEFAULT now(),
     post_thread  INTEGER      NOT NULL REFERENCES threads (thread_id) ON DELETE CASCADE,
-    image        SMALLINT     NOT NULL DEFAULT 0,
+    image        SMALLINT     NOT NULL DEFAULT 0,      -- 0 text, 1 image, 2 3D model
     session_id   INTEGER      NOT NULL DEFAULT 0          -- poster number
 );
 CREATE INDEX IF NOT EXISTS idx_replies_thread ON replies (post_thread);

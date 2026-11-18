@@ -20,6 +20,7 @@ const MAX_NAME = 24;
 const SHAPES = ['cube', 'pyramid', 'sphere', 'icosahedron'];     // what an image reply floats as
 const cleanShape = (value) => (SHAPES.includes(value) ? value : 'cube');
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;     // keep small: Neon's free database is 0.5 GB in total
+const MAX_MODEL_BYTES = 10 * 1024 * 1024;    // 3D models (.glb .gltf .obj .stl .fbx)
 const WRITES_PER_MINUTE = 10;                // per IP: posts + uploads + new threads
 
 const app = express();
@@ -51,6 +52,7 @@ function cleanText(value, label, { required = false, max = MAX_TEXT } = {}) {
 function imageFromUpload(file) {
     if (!file) return null;
     const b = file.buffer;
+    if (b.length > MAX_IMAGE_BYTES) throw bad(`Images can be at most ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`);
     let mime = null;
     if (b.length > 8 && b[0] === 0x89 && b.toString('ascii', 1, 4) === 'PNG') mime = 'image/png';
     else if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) mime = 'image/jpeg';
@@ -58,6 +60,48 @@ function imageFromUpload(file) {
     else if (b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP') mime = 'image/webp';
     if (!mime) throw bad('Only PNG, JPG, JPEG, GIF and WEBP files are allowed.');
     return { mime, data: b };
+}
+
+// 3D models: GLB / glTF, OBJ, STL, FBX, checked by their contents (and the file name
+// for the text formats). Returns null if it isn't one.
+function modelFromUpload(file) {
+    const b = file.buffer;
+    const name = (file.originalname || '').toLowerCase();
+    const starts = (s) => b.length >= s.length && b.toString('latin1', 0, s.length) === s;
+    const text = () => b.toString('utf8');
+    let mime = null;
+    if (starts('glTF')) mime = 'model/gltf-binary';
+    else if (starts('Kaydara FBX Binary')) mime = 'model/fbx';
+    else if (name.endsWith('.gltf')) {
+        let json;
+        try { json = JSON.parse(text()); } catch { throw bad('That .gltf file is not valid.'); }
+        if (!json?.asset) throw bad('That .gltf file is not valid.');
+        // only one file is uploaded, so everything must be inside it
+        const uris = [...(json.buffers || []), ...(json.images || [])].map((x) => x.uri).filter(Boolean);
+        if (uris.some((u) => !u.startsWith('data:'))) throw bad('That .gltf uses separate files. Export it as a single .glb instead.');
+        mime = 'model/gltf+json';
+    } else if (name.endsWith('.fbx') && /^\s*; FBX/.test(text().slice(0, 200))) mime = 'model/fbx';
+    else if (name.endsWith('.stl')) {
+        const binary = b.length >= 84 && b.length === 84 + 50 * b.readUInt32LE(80);
+        if (binary || /^\s*solid/.test(text().slice(0, 100))) mime = 'model/stl';
+    } else if (name.endsWith('.obj')) {
+        const t = text();
+        if (!t.includes('\0') && /^v\s/m.test(t) && /^f\s/m.test(t)) mime = 'model/obj';
+    }
+    return mime ? { mime, data: b } : null;
+}
+
+// Replies / new threads take an image OR a 3D model: { kind: 'image' | 'model', mime, data }
+function fileFromUpload(file) {
+    if (!file) return null;
+    const model = modelFromUpload(file);
+    if (model) return { kind: 'model', ...model };
+    try {
+        return { kind: 'image', ...imageFromUpload(file) };
+    } catch (err) {
+        if (err.message.startsWith('Only')) throw bad('Only images (PNG, JPG, GIF, WEBP) and 3D models (GLB, glTF, OBJ, STL, FBX) are allowed.');
+        throw err;
+    }
 }
 
 async function requireThread(threadId) {
@@ -93,7 +137,7 @@ app.use('/api', (req, res, next) => {
 
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_IMAGE_BYTES, files: 1, fields: 5, fieldSize: 64 * 1024 },
+    limits: { fileSize: MAX_MODEL_BYTES, files: 1, fields: 5, fieldSize: 64 * 1024 },     // images are checked for 3 MB themselves
 });
 
 // ------------------------------------------------------------------ API
@@ -118,8 +162,8 @@ app.post('/api/reply', rateLimit, upload.none(), route(async (req, res) => {
 
 app.post('/api/upload', rateLimit, upload.single('image'), route(async (req, res) => {
     const threadId = intParam(req.body.thread_id, 'thread_id');
-    const image = imageFromUpload(req.file);
-    if (!image) throw bad('Please choose an image to upload.');
+    const image = fileFromUpload(req.file);         // an image or a 3D model
+    if (!image) throw bad('Please choose an image or 3D model to upload.');
     await requireThread(threadId);
     const reply = await db.addImageReply(req.visitorId, threadId, image, cleanShape(req.body.shape));
     multiplayer.broadcast({ type: 'reply', reply });
@@ -129,7 +173,7 @@ app.post('/api/upload', rateLimit, upload.single('image'), route(async (req, res
 app.post('/api/create_thread', rateLimit, upload.single('image'), route(async (req, res) => {
     const title = cleanText(req.body.thread_title, 'Thread title', { required: true, max: MAX_TITLE });
     const body = cleanText(req.body.post_content, 'Body');
-    const image = imageFromUpload(req.file);
+    const image = fileFromUpload(req.file);         // an image or a 3D model
     const thread = await db.createThread(req.visitorId, title, body, image, cleanShape(req.body.shape));
     multiplayer.broadcast({ type: 'thread', thread });
     res.json(thread);
@@ -202,7 +246,7 @@ app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
 // ------------------------------------------------------------------ errors -> JSON
 app.use((err, req, res, next) => {
     if (err instanceof multer.MulterError) {
-        err = bad(err.code === 'LIMIT_FILE_SIZE' ? `File is too large (max ${MAX_IMAGE_BYTES / 1024 / 1024} MB).` : 'Upload failed.');
+        err = bad(err.code === 'LIMIT_FILE_SIZE' ? `File is too large (max ${MAX_MODEL_BYTES / 1024 / 1024} MB for 3D models, ${MAX_IMAGE_BYTES / 1024 / 1024} MB for images).` : 'Upload failed.');
     }
     const status = err.status || 500;
     if (status >= 500) console.error(err);

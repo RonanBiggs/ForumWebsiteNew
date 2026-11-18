@@ -74,6 +74,7 @@ Everything is on the computer screen itself (there's no bar or instructions belo
 - **POST** / **CREATE THREAD** (bottom right) sends. **EXIT** (top right) stands you up (so does Esc).
 - **ATTACH IMAGE** (bottom left on reply screens) or the **IMAGE** line (new-thread screen) opens the file picker. You can also **paste an image** (Ctrl+V / Cmd+V).
 - Allowed images: PNG, JPG, GIF, WEBP. Transparent parts are see-through on the shape, and **animated GIFs play** on it.
+- **3D models:** GLB, glTF (single-file), OBJ, STL and FBX, up to 10 MB, through the same ATTACH / IMAGE line. Like images, a model floats in front of the message before it, spins, and can be picked up with E. Its own animation plays if it has one. OBJ / STL have no colours here, so they show plain grey.
 - **Shape picker:** the four little drawings (cube, pyramid, sphere, icosahedron) left of the POST / CREATE THREAD button. The image floats in the room as the picked shape. It's saved with the reply (`shape` column of `replies`).
 
 | What | Where |
@@ -82,6 +83,8 @@ Everything is on the computer screen itself (there's no bar or instructions belo
 | Shape picker: position, size, the 2D drawings | `shapeRects()` and `drawShapeIcon()` in `public/js/terminal.js` |
 | The 3D shapes (size, detail, add a new one) | `shapeGeometry()` in `public/js/room.js`. A new shape also needs adding to `SHAPES` in `terminal.js` and `server/index.js`, plus a drawing in `drawShapeIcon()` |
 | Animated GIF playback | `playGif()` in `public/js/textures.js` (uses gifuct-js from the jsDelivr CDN) |
+| 3D models: loading, size, plain grey look | `public/js/models.js` (`loadModel()`, `plain()`); the size passed in `addModel()` in `public/js/room.js` |
+| Which model files the server accepts, size limits | `modelFromUpload()`, `MAX_MODEL_BYTES`, `MAX_IMAGE_BYTES` in `server/index.js` |
 | Allowed image types | `imageFromUpload()` in `server/index.js` (checks the file's real contents), `IMAGE_TYPES` in `public/js/terminal.js`, `accept=` on `#file-input` in `public/index.html` |
 | Image cube see-through cut-off | `alphaTest` on the cube material in `addReplyObjects()` in `public/js/room.js` (higher = more gets cut out) |
 | How the screens are drawn | `drawReply()`, `drawThreadForm()`, `drawButton()` in `public/js/terminal.js` |

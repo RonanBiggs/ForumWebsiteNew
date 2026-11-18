@@ -6,6 +6,7 @@
 // there as a board, in one row, oldest nearest the door. The room gets longer to fit them.
 // IMAGE replies don't get a board: they float as a cube (textured with the image)
 // in front of the board of the reply before them (see replyLayout below).
+// 3D MODEL replies (image = 2) do the same, floating as the model itself.
 // The desk + computer is against the back wall.
 //
 // Everything visual here is PLACEHOLDER geometry - replace freely.
@@ -14,6 +15,7 @@ import * as THREE from 'three';
 import { addBox, addSign, disposeTree } from './materials.js';
 import { replyPanelTexture, labelTexture, imageTexture, wrapText, PANEL_PX, FONTS } from './textures.js';
 import { Station, buildComputerDesk } from './computer.js';
+import { loadModel } from './models.js';
 
 export const ROOM = { W: 7.6, H: 3.2, T: 0.2, DOOR_W: 1.4, DOOR_H: 2.3, SLOT: 8 };
 
@@ -41,7 +43,7 @@ export function replyLayout(replies) {
     let slot = -1;
     let cubes = 0;
     for (const r of replies) {
-        if (Number(r.image) === 1) {
+        if (Number(r.image) >= 1) {                  // image or 3D model: floats in front
             if (slot < 0) { slot = 0; cubes = 0; }
             places.push({ slot, board: false, cube: cubes++ });
         } else {
@@ -182,7 +184,9 @@ export class Room {
             panel.userData.interact = frame.userData.interact = { type: 'reply', reply, room: this };
         }
 
-        if (Number(reply.image) === 1) {
+        if (Number(reply.image) === 2) {
+            this.addModel(reply, place, x, z);
+        } else if (Number(reply.image) === 1) {
             // Transparent parts of a PNG / WEBP are see-through: alphaTest cuts them out,
             // and drawing both sides shows the inside of the cube through the holes.
             const cubeMat = new THREE.MeshBasicMaterial({
@@ -191,16 +195,58 @@ export class Room {
             });
             const cube = new THREE.Mesh(shapeGeometry(reply.shape), cubeMat);
             // several images after one reply: 4 in a line out from the wall, then a row above, then further along
-            const out = place.cube % 4, layer = Math.floor(place.cube / 4);
-            cube.position.set(x + CUBE_OUT + out * CUBE_STEP, PANEL_Y + 0.1 + (layer % 2) * CUBE_STEP, z - Math.floor(layer / 2) * CUBE_STEP);
+            this.floatAt(cube, place, x, z);
             cube.userData.ownsMaterial = true;
             cube.userData.collider = true;
-            cube.userData.baseY = cube.position.y;
-            cube.userData.phase = place.slot * 0.7 + place.cube * 1.3;
             cube.userData.interact = { type: 'image', reply, room: this, cube };
             this.group.add(cube);
             this.cubes.push(cube);
         }
+    }
+
+    // Where a floating image / model goes. Several after one reply: 4 in a line out
+    // from the wall, then a row above, then further along.
+    floatAt(obj, place, x, z) {
+        const out = place.cube % 4, layer = Math.floor(place.cube / 4);
+        obj.position.set(x + CUBE_OUT + out * CUBE_STEP, PANEL_Y + 0.1 + (layer % 2) * CUBE_STEP, z - Math.floor(layer / 2) * CUBE_STEP);
+        obj.userData.baseY = obj.position.y;
+        obj.userData.phase = place.slot * 0.7 + place.cube * 1.3;
+    }
+
+    // A 3D model reply: spins, bobs and can be picked up (E) exactly like an image shape.
+    // An invisible box is what you aim at / bump into; a wireframe spins while it loads.
+    addModel(reply, place, x, z) {
+        const holder = new THREE.Group();
+        this.floatAt(holder, place, x, z);
+        const hitbox = new THREE.Mesh(new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE), new THREE.MeshBasicMaterial());
+        hitbox.visible = false;
+        hitbox.userData.ownsMaterial = true;
+        hitbox.userData.collider = true;
+        hitbox.userData.interact = { type: 'image', reply, room: this, cube: holder };
+        const loading = new THREE.Mesh(new THREE.BoxGeometry(CUBE_SIZE * 0.6, CUBE_SIZE * 0.6, CUBE_SIZE * 0.6),
+            new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true }));
+        loading.userData.ownsMaterial = true;
+        holder.add(hitbox, loading);
+        this.group.add(holder);
+        this.cubes.push(holder);
+
+        const build = this.buildId;
+        loadModel(reply.post_content, CUBE_SIZE * 1.15).then(({ object, animations }) => {
+            if (build !== this.buildId) return;      // room was rebuilt meanwhile (the new build loads its own)
+            holder.remove(loading);
+            loading.geometry.dispose();
+            loading.material.dispose();
+            holder.add(object);
+            if (animations.length) {                 // play the model's own animation, if it has one
+                const mixer = new THREE.AnimationMixer(object);
+                mixer.clipAction(animations[0]).play();
+                holder.userData.mixer = mixer;
+            }
+            this.onChange();
+        }).catch((err) => {
+            console.warn('3D model failed to load', reply.post_content, err);
+            if (build === this.buildId) loading.material.color.set(0xaa0000);   // red wireframe = broken
+        });
     }
 
     async load(api) {
@@ -257,6 +303,7 @@ export class Room {
         // image cubes slowly spin and bob, unless someone is holding one
         this.time += dt;
         for (const cube of this.cubes) {
+            cube.userData.mixer?.update(dt);
             if (cube.userData.held) continue;
             cube.rotation.y += dt * 0.5;
             cube.position.y = cube.userData.baseY + Math.sin(this.time * 1.5 + cube.userData.phase) * 0.05;

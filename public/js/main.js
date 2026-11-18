@@ -343,6 +343,7 @@ function standUp() {
 
 // ---------------------------------------------------------------- inspecting an image cube
 let inspected = null;
+let inspectedRoom = null;
 let dragging = null;
 
 function inspect(room, cube) {
@@ -350,6 +351,8 @@ function inspect(room, cube) {
     player.enabled = false;
     player.land();
     inspected = cube;
+    inspectedRoom = room;
+    room.cubes.forEach((c) => { c.visible = c === cube; });    // others floating nearby would block the view
     cube.userData.held = true;            // stop its idle spin
     show(ui.prompt, false);
     standingPose = { pos: camera.position.clone(), quat: camera.quaternion.clone() };
@@ -368,6 +371,7 @@ function endInspect() {
     dragging = null;
     tweenCamera(standingPose.pos, standingPose.quat, 0.5, () => {
         inspected.userData.held = false;
+        inspectedRoom.cubes.forEach((c) => { c.visible = true; });
         inspected = null;
         backToPlaying();
     });
