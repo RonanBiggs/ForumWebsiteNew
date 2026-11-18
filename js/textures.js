@@ -1,0 +1,175 @@
+// textures.js - PLACEHOLDER textures, all drawn on <canvas> (no image files).
+// Swap these out for real textures/materials later.
+
+import * as THREE from 'three';
+
+const FONT = 'Arial, Helvetica, sans-serif';
+const MONO = '"Courier New", monospace';
+
+function makeCanvas(w, h) {
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    return c;
+}
+
+function toTexture(canvas, repeat = true) {
+    const t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 8;
+    if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+}
+
+// Generic 1 m prototype grid in a given colour.
+export function gridTexture(base) {
+    const c = makeCanvas(256, 256);
+    const g = c.getContext('2d');
+    g.fillStyle = base;
+    g.fillRect(0, 0, 256, 256);
+    g.strokeStyle = 'rgba(0,0,0,0.12)';
+    g.lineWidth = 2;
+    for (let i = 64; i < 256; i += 64) {
+        g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke();
+        g.beginPath(); g.moveTo(0, i); g.lineTo(256, i); g.stroke();
+    }
+    g.strokeStyle = 'rgba(0,0,0,0.35)';
+    g.lineWidth = 4;
+    g.strokeRect(0, 0, 256, 256);
+    return toTexture(c);
+}
+
+// Word-wraps text to maxWidth, honouring \n and breaking very long words.
+export function wrapText(g, text, maxWidth) {
+    const lines = [];
+    for (const para of String(text).split('\n')) {
+        let line = '';
+        for (let word of para.split(' ')) {
+            while (g.measureText(word).width > maxWidth) {
+                let i = word.length;
+                while (i > 1 && g.measureText((line ? line + ' ' : '') + word.slice(0, i)).width > maxWidth) i--;
+                if (line && i <= 1) { lines.push(line); line = ''; continue; }
+                lines.push((line ? line + ' ' : '') + word.slice(0, i));
+                line = '';
+                word = word.slice(i);
+            }
+            const test = line ? line + ' ' + word : word;
+            if (g.measureText(test).width > maxWidth && line) {
+                lines.push(line);
+                line = word;
+            } else {
+                line = test;
+            }
+        }
+        lines.push(line);
+    }
+    return lines;
+}
+
+// Plain white label with black text, shrunk/ellipsised to fit.
+export function labelTexture(text, { width = 1024, height = 192, size = 72 } = {}) {
+    const c = makeCanvas(width, height);
+    const g = c.getContext('2d');
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, width, height);
+    g.strokeStyle = '#000000';
+    g.lineWidth = 6;
+    g.strokeRect(3, 3, width - 6, height - 6);
+    g.fillStyle = '#000000';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    let s = size;
+    g.font = `bold ${s}px ${FONT}`;
+    while (g.measureText(text).width > width - 60 && s > 32) g.font = `bold ${(s -= 4)}px ${FONT}`;
+    while (g.measureText(text).width > width - 60 && text.length > 1) text = text.slice(0, -2) + '…';
+    g.fillText(text, width / 2, height / 2);
+    return toTexture(c, false);
+}
+
+// ---------- reply panels (posts hung on the room's left wall) ----------
+
+export const PANEL_PX = { w: 512, h: 360 };
+
+export function replyPanelTexture(reply) {
+    const { w, h } = PANEL_PX;
+    const c = makeCanvas(w, h);
+    const g = c.getContext('2d');
+
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#000000';
+    g.lineWidth = 4;
+    g.strokeRect(2, 2, w - 4, h - 4);
+
+    g.fillStyle = '#000000';
+    g.textBaseline = 'top';
+    g.font = `bold 22px ${MONO}`;
+    g.fillText(`No. ${reply.session_id}`, 20, 18);
+    g.font = `16px ${MONO}`;
+    g.textAlign = 'right';
+    g.fillStyle = '#555555';
+    g.fillText(String(reply.post_date || '').slice(0, 16), w - 20, 22);
+    g.textAlign = 'left';
+    g.fillRect(20, 50, w - 40, 2);
+
+    const top = 64;
+    if (Number(reply.image) === 1) {
+        g.fillStyle = '#555555';
+        g.font = `italic 26px ${FONT}`;
+        g.fillText('[image reply]', 24, top + 20);
+        g.font = `22px ${FONT}`;
+        g.fillText('see the cube in front of this', 24, top + 60);
+    } else {
+        g.fillStyle = '#000000';
+        g.font = `24px ${FONT}`;
+        const lineH = 30;
+        const maxLines = Math.floor((h - top - 46) / lineH);
+        const lines = wrapText(g, reply.post_content, w - 48);
+        const shown = lines.slice(0, maxLines);
+        if (lines.length > maxLines) shown[maxLines - 1] = shown[maxLines - 1].replace(/.{0,3}$/, '…');
+        shown.forEach((line, i) => g.fillText(line, 24, top + 6 + i * lineH));
+        if (lines.length > maxLines) {
+            g.fillStyle = '#0000cc';
+            g.font = `italic 18px ${FONT}`;
+            g.fillText('[E] read the rest', 24, h - 38);
+        }
+    }
+    return toTexture(c, false);
+}
+
+// ---------- image cubes ----------
+
+// Loads an uploaded image onto a canvas texture for the image cubes. The image
+// is stretched to fill a 2:1 canvas, which then gets wrapped around the cube.
+// (Drawn INTO the canvas rather than replacing it: the GPU texture keeps its
+// first size, so swapping in a different-sized image would fail silently.)
+export function imageTexture(url) {
+    const W = 1024, H = 512;
+    const c = makeCanvas(W, H);
+    const g = c.getContext('2d');
+    const message = (bg, text) => {
+        g.fillStyle = bg;
+        g.fillRect(0, 0, W, H);
+        g.fillStyle = '#ffffff';
+        g.font = `32px ${FONT}`;
+        g.textAlign = 'center';
+        for (let x = W / 8; x < W; x += W / 4) g.fillText(text, x, H / 2);
+    };
+    message('#888888', 'loading…');
+    const tex = toTexture(c, false);
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+        g.drawImage(img, 0, 0, W, H);
+        tex.needsUpdate = true;
+    };
+    img.onerror = () => {
+        message('#aa0000', 'image failed to load');
+        tex.needsUpdate = true;
+    };
+    img.src = url;
+    return tex;
+}
+
+export const FONTS = { FONT, MONO };

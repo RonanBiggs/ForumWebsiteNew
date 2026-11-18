@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hotel</title>
+    <link rel="stylesheet" href="style.css" />
+
+    <!-- three.js from a CDN: no build step, works on any static host (InfinityFree included) -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+<body>
+
+<div id="viewport"></div>
+
+<!-- Start screen -->
+<div id="start" class="overlay">
+    <div class="panel">
+        <button id="enter-btn" disabled>Loading…</button>
+        <p class="hint">WASD walk · Shift run · Mouse look · E / Click interact · Esc pause</p>
+        <p id="data-mode" class="hint"></p>
+    </div>
+</div>
+
+<!-- Pause screen -->
+<div id="pause" class="overlay hidden">
+    <div class="panel">
+        <p>Paused</p>
+        <button id="resume-btn">Resume</button>
+    </div>
+</div>
+
+<!-- Read a reply in full -->
+<div id="reader" class="overlay hidden">
+    <div class="panel reader">
+        <p class="meta"><b id="reader-poster"></b> <span id="reader-date"></span></p>
+        <div id="reader-body"></div>
+        <button id="reader-close">Back</button>
+    </div>
+</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+    <div id="crosshair"></div>
+    <div id="prompt" class="hidden"></div>
+    <div id="room-label" class="hidden"></div>
+    <div id="toast" class="hidden"></div>
+</div>
+
+<!-- Shown while sitting at a computer -->
+<div id="seatbar" class="bar hidden">
+    <span id="seat-hint"></span>
+    <button id="attach-btn" type="button">Attach image</button>
+</div>
+
+<!-- Shown while looking at an image cube -->
+<div id="inspectbar" class="bar hidden">
+    <span>Click and drag to turn</span>
+    <span>E / Esc: step back</span>
+</div>
+
+<!-- The computer screen in 3D mirrors this hidden textarea (gives us paste, IME, arrow keys for free) -->
+<textarea id="term-input" aria-label="Reply text" spellcheck="false"></textarea>
+<input id="file-input" type="file" accept="image/png,image/jpeg,image/gif" hidden />
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
