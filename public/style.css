@@ -81,7 +81,11 @@ input[type="text"] {
     font-size: 0.9rem;
     max-width: calc(100% - 32px);
 }
-#prompt { left: 50%; top: calc(50% + 24px); transform: translateX(-50%); white-space: nowrap; }
+#prompt {                       /* just "E", like a key cap */
+    left: 50%; top: calc(50% + 22px); transform: translateX(-50%); white-space: nowrap;
+    padding: 2px 8px; border: 1px solid rgba(255, 255, 255, 0.7); border-radius: 4px;
+    font-weight: bold;
+}
 #room-label { left: 16px; top: 16px; }
 #online { right: 16px; top: 16px; position: absolute; background: rgba(0, 0, 0, 0.6); padding: 4px 10px; font-size: 0.9rem; }
 #room-label small { display: block; color: #ccc; }

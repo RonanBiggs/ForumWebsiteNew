@@ -24,8 +24,14 @@ async function request(path, options = {}) {
 
 const serverApi = {
     listThreads: () => request('threads'),
-    // image URLs for the lobby / corridor walls (files in public/assets/)
+    // lobby / corridor pictures: [{ slot, url }] (slot = original file in public/assets/)
     listWallImages: () => request('wall-images'),
+    setWallImage(slot, file) {
+        const body = new FormData();
+        body.append('slot', slot);
+        body.append('image', file);
+        return request('wall-image', { method: 'POST', body });
+    },
     // username, one per IP, permanent: null if not chosen yet
     getMyName: async () => (await request('me')).name,
     async setMyName(name) {
@@ -83,6 +89,10 @@ export const api = {
     createThread: async (...a) => (await backend()).createThread(...a),
     // demo mode has no server to list public/assets/, so no wall pictures there
     listWallImages: async () => ((await backend()) === serverApi ? serverApi.listWallImages() : []),
+    // demo mode: only changes it in this browser, until reload
+    setWallImage: async (slot, file) => ((await backend()) === serverApi
+        ? serverApi.setWallImage(slot, file)
+        : { slot, url: URL.createObjectURL(file) }),
     // demo mode: the name is kept in this browser instead
     getMyName: async () => ((await backend()) === serverApi ? serverApi.getMyName() : localName.get()),
     setMyName: async (name) => ((await backend()) === serverApi ? serverApi.setMyName(name) : localName.set(name)),

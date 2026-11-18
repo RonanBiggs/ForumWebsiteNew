@@ -45,8 +45,7 @@ const ui = {
     hud: $('hud'), prompt: $('prompt'), roomLabel: $('room-label'), toast: $('toast'),
     reader: $('reader'), readerPoster: $('reader-poster'), readerDate: $('reader-date'),
     readerBody: $('reader-body'), readerClose: $('reader-close'),
-    seatbar: $('seatbar'), seatHint: $('seat-hint'), attach: $('attach-btn'), inspectbar: $('inspectbar'),
-    post: $('post-btn'), nextField: $('field-btn'), keyboard: $('keyboard-btn'), stand: $('stand-btn'),
+    inspectbar: $('inspectbar'),
     inspectBack: $('inspect-back'),
 };
 document.title = CONFIG.HOTEL_NAME;
@@ -80,7 +79,6 @@ const gun = new Gun({ scene, camera, hotel, getNet: () => net });
 const terminal = new Terminal({
     input: $('term-input'),
     fileInput: $('file-input'),
-    hint: ui.seatHint,
     api,
     onExit: standUp,
     onThreadCreated: (thread) => { hotel.addRoom(thread, false); requestLayout(); },
@@ -202,11 +200,6 @@ raycaster.far = 2.6;
 const CENTER = new THREE.Vector2(0, 0);
 let target = null;
 
-function promptFor(t) {
-    if (t.type === 'computer') return t.station.kind === 'thread' ? '[E] Sit down: start a new thread' : '[E] Sit down and reply';
-    if (t.type === 'image') return '[E] Look at image';
-    return '[E] Read reply';
-}
 
 function findTarget() {
     raycaster.setFromCamera(CENTER, camera);
@@ -219,7 +212,28 @@ function interact() {
     if (target.type === 'computer') sitDown(target.station);
     if (target.type === 'reply') openReader(target.reply);
     if (target.type === 'image') inspect(target.room, target.cube);
+    if (target.type === 'picture') changePicture(target.slot);
 }
+
+// ---------------------------------------------------------------- changing a lobby/corridor picture
+// E at a picture frame: pick an image, it replaces that picture for everyone.
+const pictureInput = $('picture-input');
+let pictureSlot = null;
+function changePicture(slot) {
+    pictureSlot = slot;
+    pictureInput.click();
+}
+pictureInput.addEventListener('change', async () => {
+    const file = pictureInput.files[0];
+    pictureInput.value = '';
+    if (!file || !pictureSlot) return;
+    try {
+        const { slot, url } = await api.setWallImage(pictureSlot, file);
+        hotel.setWallImage(slot, url);
+    } catch (err) {
+        toast(err.message);
+    }
+});
 // One keydown handler, so the same E press can't both start and end something.
 addEventListener('keydown', (e) => {
     if (e.code === 'KeyE' && !e.repeat) {
@@ -307,9 +321,6 @@ function sitDown(station) {
 
     const { pos, look } = station.seatPose();
     tweenCamera(pos, lookQuat(pos, look), 0.7, () => {
-        show(ui.seatbar);
-        show(ui.nextField, station.kind === 'thread');
-        ui.post.textContent = station.kind === 'thread' ? 'Create thread' : 'Post';
         try {
             terminal.open(station);
         } catch (err) {
@@ -324,18 +335,11 @@ function sitDown(station) {
 function standUp() {
     if (state !== 'seated' || tween) return;        // not seated, or still sitting down / standing up
     terminal.close();
-    show(ui.seatbar, false);
     tweenCamera(standingPose.pos, standingPose.quat, 0.5, () => {
         show(ui.hud);
         backToPlaying();
     });
 }
-ui.attach.addEventListener('click', () => terminal.attach());
-// seat bar buttons (mainly for phones: no Esc / Tab keys there)
-ui.post.addEventListener('click', () => { terminal.submit(); terminal.focus(); });
-ui.nextField.addEventListener('click', () => { terminal.nextField(); terminal.focus(); });
-ui.keyboard.addEventListener('click', () => terminal.focus());
-ui.stand.addEventListener('click', standUp);
 
 // ---------------------------------------------------------------- inspecting an image cube
 let inspected = null;
@@ -426,6 +430,7 @@ function startMultiplayer() {
         onThread: (thread) => { hotel.addRoom(thread, false); requestLayout(); },
         onReply: (reply) => { if (hotel.addReply(reply)) requestLayout(); },
         onShot: (origin, dir) => gun.spawn(origin, dir, false),
+        onWallImage: (slot, url) => hotel.setWallImage(slot, url),
         onHit: (dir) => {
             // someone shot us: fly! (not while sitting at a computer / looking at a cube)
             if (!tween && ['start', 'playing', 'free', 'overlay'].includes(state)) player.knockback(knockVelocity(dir));
@@ -467,6 +472,16 @@ renderer.setAnimationLoop(() => {
         if (tween.t === 1) { const done = tween.done; tween = null; done(); }
     }
 
+    // Seated: a new reply makes the room longer, which moves the desk. Follow it.
+    if (state === 'seated' && !tween && terminal.station) {
+        const { pos, look } = terminal.station.seatPose();
+        if (camera.position.distanceToSquared(pos) > 1e-4) {
+            const k = 1 - Math.exp(-dt * 6);
+            camera.position.lerp(pos, k);
+            camera.quaternion.slerp(lookQuat(pos, look), k);
+        }
+    }
+
     if (layoutPending && !tween && ['start', 'playing', 'free'].includes(state)) applyLayout();
 
     // Portrait phone at a computer: widen the view so the whole screen fits.
@@ -488,8 +503,9 @@ renderer.setAnimationLoop(() => {
     if (state === 'playing') {
         target = findTarget();
         show(ui.prompt, !!target && !touch);         // touch: the USE button shows it instead
-        if (target) ui.prompt.textContent = promptFor(target);
-        touchControls?.setUse(target ? promptFor(target).replace('[E] ', '') : null);
+        // minimal on purpose: just the key, no description
+        if (target) ui.prompt.textContent = 'E';
+        touchControls?.setUse(target ? 'USE' : null);
         updateRoomLabel();
     }
 

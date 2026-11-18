@@ -161,6 +161,7 @@ export function imageTexture(url) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
+        g.clearRect(0, 0, W, H);          // keep PNG / WEBP transparency (the cube is see-through there)
         g.drawImage(img, 0, 0, W, H);
         tex.needsUpdate = true;
     };

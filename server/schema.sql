@@ -44,3 +44,11 @@ CREATE TABLE IF NOT EXISTS usernames (
     name       VARCHAR(24) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Wall pictures that visitors replaced (press E at a picture frame). slot = the
+-- original file in public/assets/ ("assets/DomBed.jpg"); image_id = what hangs there now.
+CREATE TABLE IF NOT EXISTS wall_pictures (
+    slot       TEXT        PRIMARY KEY,
+    image_id   INTEGER     NOT NULL REFERENCES images (image_id),
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

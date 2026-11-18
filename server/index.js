@@ -44,7 +44,7 @@ function cleanText(value, label, { required = false, max = MAX_TEXT } = {}) {
     return text;
 }
 
-// Only real PNG / JPEG / GIF files, checked by their first bytes (not the file name).
+// Only real PNG / JPEG / GIF / WEBP files, checked by their first bytes (not the file name).
 function imageFromUpload(file) {
     if (!file) return null;
     const b = file.buffer;
@@ -52,7 +52,8 @@ function imageFromUpload(file) {
     if (b.length > 8 && b[0] === 0x89 && b.toString('ascii', 1, 4) === 'PNG') mime = 'image/png';
     else if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) mime = 'image/jpeg';
     else if (b.length > 6 && b.toString('ascii', 0, 4) === 'GIF8') mime = 'image/gif';
-    if (!mime) throw bad('Only PNG, JPG, JPEG and GIF files are allowed.');
+    else if (b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP') mime = 'image/webp';
+    if (!mime) throw bad('Only PNG, JPG, JPEG, GIF and WEBP files are allowed.');
     return { mime, data: b };
 }
 
@@ -156,14 +157,31 @@ app.post('/api/name', rateLimit, upload.none(), route(async (req, res) => {
     res.json({ name: saved });
 }));
 
-// Pictures for the lobby / corridor walls: every image file in public/assets/.
+// Pictures for the lobby / corridor walls: one frame ("slot") per image file in
+// public/assets/. Visitors can replace what hangs in a frame (press E at it).
 const ASSETS_DIR = fileURLToPath(new URL('../public/assets', import.meta.url));
-app.get('/api/wall-images', route(async (req, res) => {
+async function wallSlots() {
     const files = await readdir(ASSETS_DIR).catch(() => []);
-    res.json(files
+    return files
         .filter((f) => /\.(jpe?g|png|gif|webp)$/i.test(f))
         .sort((a, b) => a.localeCompare(b))
-        .map((f) => 'assets/' + encodeURIComponent(f)));
+        .map((f) => 'assets/' + encodeURIComponent(f));
+}
+
+// [{ slot, url }]: url is the replacement if someone changed it, else the original file
+app.get('/api/wall-images', route(async (req, res) => {
+    const [slots, replaced] = await Promise.all([wallSlots(), db.getWallPictures()]);
+    res.json(slots.map((slot) => ({ slot, url: replaced[slot] || slot })));
+}));
+
+app.post('/api/wall-image', rateLimit, upload.single('image'), route(async (req, res) => {
+    const slot = String(req.body.slot || '');
+    if (!(await wallSlots()).includes(slot)) throw bad('That picture frame does not exist.');
+    const image = imageFromUpload(req.file);
+    if (!image) throw bad('Please choose an image.');
+    const url = await db.setWallPicture(slot, image);
+    multiplayer.broadcast({ type: 'wallImage', slot, url });
+    res.json({ slot, url });
 }));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Unknown API endpoint.' }));

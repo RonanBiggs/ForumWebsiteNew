@@ -9,6 +9,7 @@
 //   can be in a different order on different screens for a moment.
 // Server -> client: { type: 'welcome', id, players: [{ id, name, room, x, y, z, ry }] }
 //                   { type: 'name', id, name }   (a player's username, shown above their pill)
+//                   { type: 'wallImage', slot, url }   (someone changed a lobby/corridor picture)
 //                   { type: 'pose', id, room, x, y, z, ry }
 //                   { type: 'shot', id, room, x, y, z, dx, dy, dz }   { type: 'hit', from, room, dx, dz }
 //                   { type: 'leave', id }

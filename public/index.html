@@ -50,20 +50,8 @@
     <div id="toast" class="hidden"></div>
 </div>
 
-<!-- Shown while sitting at a computer -->
-<div id="seatbar" class="bar hidden">
-    <span id="seat-hint" class="desktop-only"></span>
-    <button id="field-btn" type="button">Next field</button>
-    <button id="post-btn" type="button">Post</button>
-    <button id="attach-btn" type="button">Attach image</button>
-    <button id="keyboard-btn" type="button" class="touch-only">Keyboard</button>
-    <button id="stand-btn" type="button">Stand up</button>
-</div>
-
 <!-- Shown while looking at an image cube -->
 <div id="inspectbar" class="bar hidden">
-    <span>Drag to turn</span>
-    <span class="desktop-only">E / Esc: step back</span>
     <button id="inspect-back" type="button">Back</button>
 </div>
 
@@ -76,7 +64,8 @@
 
 <!-- The computer screen in 3D mirrors this hidden textarea (gives us paste, IME, arrow keys for free) -->
 <textarea id="term-input" aria-label="Reply text" spellcheck="false"></textarea>
-<input id="file-input" type="file" accept="image/png,image/jpeg,image/gif" hidden />
+<input id="file-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
+<input id="picture-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
 
 <script type="module" src="js/main.js"></script>
 </body>

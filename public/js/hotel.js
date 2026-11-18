@@ -22,6 +22,7 @@ const LIGHT_POOL = 6;     // a few real lights that follow the player (cheap)
 
 // WALL PICTURES: every image in public/assets/ hangs once on a wall, alternating
 // lobby / corridor. Spots are tried in this order; add or move spots here.
+// Anyone can press E at a picture to hang their own image in that frame instead.
 const PICTURE = { H: 1.4, Y: 1.6, FRAME: 0.06 };     // picture height (m), centre height, frame border
 const LOBBY_SPOTS = [                                // x, z, rotY (which way it faces)
     { x: -LOBBY.halfW, z: 3, rotY: Math.PI / 2 },         // left wall, facing the lobby computer
@@ -46,7 +47,7 @@ export class Hotel {
         this.dirty = true;
         this.lightSpots = [];
         this._tmp = new THREE.Vector3();
-        this.wallImages = [];                 // URLs from public/assets/
+        this.wallImages = [];                 // [{ slot, url }]: one frame per file in public/assets/
         this.pictureTextures = new Map();     // url -> texture (kept when the corridor is rebuilt)
         this.pictureMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 });   // frames
 
@@ -164,15 +165,23 @@ export class Hotel {
         for (let z = -SLOT / 2; z > -L + 1; z -= SLOT) corridor.push({ x: -HALF, z, rotY: Math.PI / 2 });   // opposite each door
         for (let z = -SLOT; z > -L + 1; z -= SLOT) corridor.push({ x: -HALF, z, rotY: Math.PI / 2 });       // then in between
         const lobby = [...LOBBY_SPOTS];
-        this.wallImages.forEach((url, i) => {
+        this.wallImages.forEach((pic, i) => {
             const first = i % 2 === 0 ? lobby : corridor;
             const spot = first.shift() ?? (first === lobby ? corridor : lobby).shift();
-            if (spot) this.addPicture(g, url, spot);
-            else console.warn('No wall space left for', url);
+            if (spot) this.addPicture(g, pic, spot);
+            else console.warn('No wall space left for', pic.slot);
         });
     }
 
-    addPicture(parent, url, { x, z, rotY }) {
+    // Someone hung a new image in a frame (us, or another player live).
+    setWallImage(slot, url) {
+        const pic = this.wallImages.find((p) => p.slot === slot);
+        if (!pic || pic.url === url) return;
+        pic.url = url;
+        this.buildCorridor();
+    }
+
+    addPicture(parent, { slot, url }, { x, z, rotY }) {
         const pic = new THREE.Group();
         pic.position.set(x, PICTURE.Y, z);
         pic.rotation.y = rotY;
@@ -185,6 +194,7 @@ export class Hotel {
         photo.userData.ownsMaterial = true;     // the material is freed on rebuild...
         photo.userData.keepMap = true;          // ...but the texture stays cached for the next one
         pic.add(frame, photo);
+        frame.userData.interact = photo.userData.interact = { type: 'picture', slot };   // press E to change it
 
         // width follows the image's shape once it has loaded
         const fit = (tex) => {

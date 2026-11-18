@@ -162,3 +162,23 @@ export async function claimUsername(ip, name) {
          RETURNING name`, [ip, name]);
     return rows[0].name;
 }
+
+// ------------------------------------------------------------------ replaced wall pictures
+// { 'assets/DomBed.jpg': 'api/images/12', ... }
+export async function getWallPictures() {
+    const { rows } = await pool.query('SELECT slot, image_id FROM wall_pictures');
+    return Object.fromEntries(rows.map((r) => [r.slot, 'api/images/' + r.image_id]));
+}
+
+// Hangs a new image in a picture frame. Returns its URL.
+export function setWallPicture(slot, image) {
+    return transaction(async (db) => {
+        const path = await insertImage(db, image);           // "images/<id>"
+        const imageId = Number(path.split('/')[1]);
+        await db.query(
+            `INSERT INTO wall_pictures (slot, image_id) VALUES ($1, $2)
+             ON CONFLICT (slot) DO UPDATE SET image_id = EXCLUDED.image_id, changed_at = now()`,
+            [slot, imageId]);
+        return 'api/' + path;
+    });
+}

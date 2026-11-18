@@ -154,7 +154,12 @@ export class Room {
         let interact = { type: 'reply', reply, room: this };
 
         if (Number(reply.image) === 1) {
-            const cubeMat = new THREE.MeshBasicMaterial({ map: imageTexture(reply.post_content), toneMapped: false });
+            // Transparent parts of a PNG / WEBP are see-through: alphaTest cuts them out,
+            // and drawing both sides shows the inside of the cube through the holes.
+            const cubeMat = new THREE.MeshBasicMaterial({
+                map: imageTexture(reply.post_content), toneMapped: false,
+                transparent: true, alphaTest: 0.05, side: THREE.DoubleSide,
+            });
             const cube = new THREE.Mesh(wrappedCubeGeometry(CUBE_SIZE), cubeMat);
             cube.position.set(x + CUBE_OUT, PANEL_Y + 0.1, z);
             cube.userData.ownsMaterial = true;

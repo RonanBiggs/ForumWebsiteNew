@@ -137,7 +137,7 @@ function addReply(threadId, content, image) {
 }
 
 function checkImage(file) {
-    if (!/^image\/(png|jpeg|gif)$/.test(file.type)) throw new Error('Only PNG, JPG, JPEG and GIF files are allowed');
+    if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) throw new Error('Only PNG, JPG, JPEG, GIF and WEBP files are allowed');
     if (file.size > 5000000) throw new Error('File is too large');
 }
 

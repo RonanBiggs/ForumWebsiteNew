@@ -69,11 +69,17 @@ Everyone on the same Wi-Fi / network usually shares one IP, so they share one na
 
 ## Typing on the computers
 
-Click **TITLE** or **BODY** on the screen to type there (or press Tab). **Enter makes a new line**; to send, click the **POST** / **CREATE THREAD** button drawn at the bottom right of the screen (or the button of the same name in the bar below). Clicking the IMAGE line opens the file picker.
+Everything is on the computer screen itself (there's no bar or instructions below it):
+- Click **TITLE** or **BODY** to type there (or press Tab). **Enter makes a new line.**
+- **POST** / **CREATE THREAD** (bottom right) sends. **EXIT** (top right) stands you up (so does Esc).
+- **ATTACH IMAGE** (bottom left on reply screens) or the **IMAGE** line (new-thread screen) opens the file picker. You can also **paste an image** (Ctrl+V / Cmd+V).
+- Allowed images: PNG, JPG, GIF, WEBP. Transparent parts of a PNG / WEBP are see-through on its image cube.
 
 | What | Where |
 |---|---|
-| Clickable areas and the button's size/position on the screen | `BUTTON` and `AREAS` at the top of `public/js/terminal.js` (in screen pixels, 1024 × 768) |
+| Clickable areas and the buttons' size/position on the screen | `BUTTON`, `ATTACH`, `EXIT` and `AREAS` at the top of `public/js/terminal.js` (in screen pixels, 1024 × 768) |
+| Allowed image types | `imageFromUpload()` in `server/index.js` (checks the file's real contents), `IMAGE_TYPES` in `public/js/terminal.js`, `accept=` on `#file-input` in `public/index.html` |
+| Image cube see-through cut-off | `alphaTest` on the cube material in `addReplyObjects()` in `public/js/room.js` (higher = more gets cut out) |
 | How the screens are drawn | `drawReply()`, `drawThreadForm()`, `drawButton()` in `public/js/terminal.js` |
 
 ---
@@ -94,6 +100,10 @@ magick Assets/MyPhoto.jpg -auto-orient -resize '1600x1600>' -strip -quality 82 p
 | Where pictures can go in the lobby (and in what order) | `LOBBY_SPOTS` at the top of `public/js/hotel.js` |
 | Where they go in the corridor | `hangPictures()` in `public/js/hotel.js`: first across from each door, then in between |
 | Frame colour | `pictureMat` in the `Hotel` constructor in `public/js/hotel.js` |
+
+**Anyone can change a picture:** walk up to a frame and press **E** (USE on phones), then pick an image. It replaces that picture for everyone, live, and stays (it's saved in the database, table `wall_pictures`). The frame resizes to the new image's shape.
+- **Put the original back:** in the Neon SQL editor, `DELETE FROM wall_pictures WHERE slot = 'assets/DomBed.jpg';` (or `DELETE FROM wall_pictures;` for all of them).
+- The upload endpoint is `POST /api/wall-image` in `server/index.js` (same size limit and spam limit as replies).
 
 Not shown in demo mode (`npx serve public`), because there's no server there to list the folder.
 
@@ -120,7 +130,6 @@ Turned on automatically on touch screens. Add `?touch=1` to the address to try t
 |---|---|
 | Joystick, FIRE / USE buttons: look and position | `public/style.css`, the `Touch controls` section at the bottom |
 | Look sensitivity, joystick size | `LOOK_SPEED`, `STICK_RADIUS` at the top of `public/js/touch.js` |
-| Buttons while sitting at a computer (Post, Next field, Keyboard, Stand up) | `<div id="seatbar">` in `public/index.html` |
 
 ---
 
@@ -137,7 +146,7 @@ Turned on automatically on touch screens. Add `?touch=1` to the address to try t
 | The computer (desk, chair, screen) in rooms and lobby | `buildComputerDesk()` in `public/js/computer.js`. To use your own `.glb` model, see the README |
 | What the computer screens show | `public/js/terminal.js` (`drawReply`, `drawThreadForm`) and the idle screens: `drawScreenIdle()` in `public/js/room.js`, and `lobbyStation` in `public/js/hotel.js` |
 | Lobby size / layout | `LOBBY` at the top of `public/js/hotel.js`, and `buildCorridor()` |
-| Menus, HUD, prompt text style | `public/style.css` and `public/index.html` |
+| Menus, HUD, the "E" prompt (deliberately just the key, no description) | `public/style.css` (`#prompt`) and `public/index.html`. The text is set in the game loop in `public/js/main.js` |
 | Walk / run speed, eye height | `public/js/config.js` |
 | Other players (the pill): size, colour, how often positions are sent | top of `public/js/net.js` (`PILL_RADIUS`, `PILL_HEIGHT`, `SEND_EVERY`) and `pillMaterial` in its constructor |
 | Max image size, spam limit | top of `server/index.js` (`MAX_IMAGE_BYTES`, `WRITES_PER_MINUTE`) |

@@ -14,18 +14,20 @@ const MONO = FONTS.MONO;
 
 // Clickable areas on the 1024 x 768 screen canvas (also used to draw them).
 const BUTTON = { x: 1024 - 380, y: 768 - 105, w: 330, h: 70 };      // POST / CREATE THREAD
+const ATTACH = { x: 50, y: 768 - 105, w: 330, h: 70 };              // ATTACH IMAGE (reply screens)
+const EXIT = { x: 1024 - 200, y: 28, w: 150, h: 52 };               // EXIT (stand up)
 const AREAS = {
     title: { y0: 100, y1: 205 },
     body: { y0: 205, y1: 550 },
     image: { y0: 550, y1: 640 },
 };
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const inRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
 export class Terminal {
-    constructor({ input, fileInput, hint, api, onExit, onThreadCreated }) {
+    constructor({ input, fileInput, api, onExit, onThreadCreated }) {
         this.input = input;
         this.fileInput = fileInput;
-        this.hint = hint;                       // HTML element showing the key help
         this.api = api;
         this.onExit = onExit;
         this.onThreadCreated = onThreadCreated;
@@ -38,6 +40,20 @@ export class Terminal {
         input.addEventListener('input', () => this.syncField());
         input.addEventListener('keyup', () => this.draw());          // caret moves
         input.addEventListener('keydown', (e) => this.onKey(e));
+        // Ctrl+V / paste with an image on the clipboard: attach it (text pastes as normal)
+        input.addEventListener('paste', (e) => {
+            const item = [...(e.clipboardData?.items || [])].find((i) => i.kind === 'file' && i.type.startsWith('image/'));
+            const file = item?.getAsFile();
+            if (!file || !this.station) return;
+            e.preventDefault();
+            if (!IMAGE_TYPES.includes(file.type)) {
+                this.status = 'ERROR: only PNG, JPG, GIF and WEBP images';
+                this.draw();
+                return;
+            }
+            const ext = file.type.split('/')[1].replace('jpeg', 'jpg');
+            this.attachFile(file.name && file.name !== 'image.png' ? file : new File([file], `pasted.${ext}`, { type: file.type }));
+        });
         fileInput.addEventListener('change', () => {
             const file = fileInput.files[0];
             fileInput.value = '';
@@ -55,9 +71,6 @@ export class Terminal {
         this.status = '';
         this.input.value = '';
         this.form = station.kind === 'thread' ? { title: '', body: '', image: null, field: 'title' } : null;
-        this.hint.textContent = station.kind === 'thread'
-            ? 'Click TITLE or BODY to type there · Enter: new line · click CREATE THREAD to post · Esc: stand up'
-            : 'Enter: new line · click POST on the screen to send · Esc: stand up';
         this.focus();
         this.draw();
     }
@@ -75,16 +88,11 @@ export class Terminal {
 
     attach() { if (this.station && !this.busy) this.fileInput.click(); }
 
-    // Same as pressing Enter on the last field (the Post / Create button).
+    // The POST / CREATE THREAD button on the screen.
     submit() {
         if (!this.station) return;
         if (this.mode === 'thread') this.createThread();
         else this.postReply();
-    }
-
-    // Same as Tab (the Next field button).
-    nextField() {
-        if (this.form) this.switchField(this.form.field === 'title' ? 'body' : 'title');
     }
 
     // ------------------------------------------------------------------ input
@@ -119,8 +127,12 @@ export class Terminal {
     // A click on the screen at canvas pixel (x, y). Returns true if it hit something.
     clickAt(x, y) {
         if (!this.station) return false;
+        if (inRect(x, y, EXIT)) { this.onExit(); return true; }
         if (inRect(x, y, BUTTON)) { this.submit(); return true; }
-        if (this.mode !== 'thread') return false;
+        if (this.mode !== 'thread') {
+            if (inRect(x, y, ATTACH)) { this.attach(); return true; }
+            return false;
+        }
         for (const field of ['title', 'body']) {
             if (y >= AREAS[field].y0 && y < AREAS[field].y1) {
                 if (this.form.field !== field) this.switchField(field);
@@ -211,20 +223,26 @@ export class Terminal {
         if (this.mode === 'thread') this.drawThreadForm(g, w, h);
         else this.drawReply(g, w, h);
 
-        // status (left) and the POST / CREATE THREAD button (bottom right)
+        // status line, then the buttons: EXIT (top right), POST / CREATE THREAD (bottom right),
+        // ATTACH IMAGE (bottom left, reply screens; the new-thread form has its IMAGE line)
         g.font = `26px ${MONO}`;
         g.fillStyle = this.status.startsWith('ERROR') ? '#ff5555' : '#dddddd';
-        wrapText(g, this.status, BUTTON.x - 80).slice(0, 2).forEach((l, i) => g.fillText(l, 50, h - 95 + i * 32));
-        this.drawButton(g, this.mode === 'thread' ? 'CREATE THREAD' : 'POST');
+        if (this.mode === 'thread') {
+            wrapText(g, this.status, BUTTON.x - 80).slice(0, 2).forEach((l, i) => g.fillText(l, 50, h - 95 + i * 32));
+        } else {
+            wrapText(g, this.status, w - 100).slice(0, 2).forEach((l, i) => g.fillText(l, 50, 590 + i * 32));
+            this.drawButton(g, ATTACH, 'ATTACH IMAGE');
+        }
+        this.drawButton(g, BUTTON, this.mode === 'thread' ? 'CREATE THREAD' : 'POST');
+        this.drawButton(g, EXIT, 'EXIT', 28);
         st.texture.needsUpdate = true;
     }
 
-    drawButton(g, label) {
-        const b = BUTTON;
+    drawButton(g, b, label, size = 34) {
         g.fillStyle = this.busy ? '#666666' : '#ffffff';
         g.fillRect(b.x, b.y, b.w, b.h);
         g.fillStyle = '#1a1a1a';
-        g.font = `bold 34px ${MONO}`;
+        g.font = `bold ${size}px ${MONO}`;
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         g.fillText(label, b.x + b.w / 2, b.y + b.h / 2 + 2);
@@ -236,12 +254,12 @@ export class Terminal {
         const room = this.station.room;
         g.font = `bold 34px ${MONO}`;
         const title = room.thread.thread_title;
-        g.fillText(`REPLY :: ${title.length > 34 ? title.slice(0, 33) + '…' : title}`, 50, 40);
+        g.fillText(`REPLY :: ${title.length > 26 ? title.slice(0, 25) + '…' : title}`, 50, 40);
         g.fillRect(50, 90, w - 100, 3);
         g.font = `34px ${MONO}`;
         const lines = wrapText(g, '> ' + this.withCursor(this.input.value, true), w - 100);
-        lines.slice(-12).forEach((l, i) => g.fillText(l, 50, 120 + i * 42));
-        // (12 lines end at y ~620, above the status line and POST button)
+        lines.slice(-11).forEach((l, i) => g.fillText(l, 50, 120 + i * 42));
+        // (11 lines end at y ~580, above the status line and the buttons)
     }
 
     drawThreadForm(g, w) {
@@ -272,6 +290,6 @@ export class Terminal {
         label('IMAGE (optional)', 560, false);
         g.fillStyle = '#ffffff';
         g.font = `28px ${MONO}`;
-        g.fillText(f.image ? f.image.name : 'none, click here to attach one', 90, 600);
+        g.fillText(f.image ? f.image.name : 'none: click here, or paste one (Ctrl+V)', 90, 600);
     }
 }
