@@ -7,19 +7,28 @@
 //                   { type: 'hb' }   (heartbeat, ignored)
 //   Positions inside/near a room are sent RELATIVE to that room, because rooms
 //   can be in a different order on different screens for a moment.
-// Server -> client: { type: 'welcome', id, players: [{ id, room, x, y, z, ry }] }
+// Server -> client: { type: 'welcome', id, players: [{ id, name, room, x, y, z, ry }] }
+//                   { type: 'name', id, name }   (a player's username, shown above their pill)
 //                   { type: 'pose', id, room, x, y, z, ry }
 //                   { type: 'shot', id, room, x, y, z, dx, dy, dz }   { type: 'hit', from, room, dx, dz }
 //                   { type: 'leave', id }
 //                   { type: 'thread', thread }   { type: 'reply', reply }
 
 import { WebSocketServer } from 'ws';
+import { getUsername } from './db.js';
 
 const MAX_MSGS_PER_SEC = 60;          // positions (10/s) + gun spam
 
 const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e5;
 const cleanRoom = (room) => (room ?? null) === null ? null : (Number.isInteger(room) && room > 0 ? room : undefined);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+// The visitor's IP, worked out the same way as Express's req.ip with 'trust proxy' = 1
+// (Render's proxy adds the real address as the last X-Forwarded-For entry).
+function clientIp(req) {
+    const xff = req.headers['x-forwarded-for'];
+    return xff ? xff.split(',').pop().trim() : req.socket.remoteAddress;
+}
 
 function cleanPose(msg) {
     const room = cleanRoom(msg.room);
@@ -57,15 +66,18 @@ export function attachMultiplayer(server) {
         for (const ws of players.keys()) if (ws !== except && ws.readyState === ws.OPEN) ws.send(data);
     };
 
-    wss.on('connection', (ws) => {
-        const me = { id: nextId++, pose: null, alive: true, msgs: 0, windowStart: Date.now() };
+    wss.on('connection', (ws, req) => {
+        const me = { id: nextId++, ip: clientIp(req), name: null, pose: null, alive: true, msgs: 0, windowStart: Date.now() };
         players.set(ws, me);
         byId.set(me.id, ws);
         send(ws, {
             type: 'welcome',
             id: me.id,
-            players: [...players.values()].filter((p) => p !== me && p.pose).map((p) => ({ id: p.id, ...p.pose })),
+            players: [...players.values()].filter((p) => p !== me && p.pose).map((p) => ({ id: p.id, name: p.name, ...p.pose })),
         });
+        getUsername(me.ip).then((name) => {
+            if (name && players.has(ws)) { me.name = name; broadcast({ type: 'name', id: me.id, name }, ws); }
+        }).catch((err) => console.error('Username lookup failed:', err.message));
 
         ws.on('pong', () => { me.alive = true; });
         ws.on('message', (data) => {
@@ -107,5 +119,14 @@ export function attachMultiplayer(server) {
     }, 30000);
     wss.on('close', () => clearInterval(heartbeat));
 
-    return { broadcast, count: () => players.size };
+    // A name was just chosen: label every open connection from that IP.
+    function setName(ip, name) {
+        for (const [ws, p] of players) {
+            if (p.ip !== ip || p.name === name) continue;
+            p.name = name;
+            broadcast({ type: 'name', id: p.id, name }, ws);
+        }
+    }
+
+    return { broadcast, setName, count: () => players.size };
 }

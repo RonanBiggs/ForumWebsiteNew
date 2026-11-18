@@ -51,6 +51,33 @@ Long text shrinks to fit, and then gets cut off with "…".
 
 ---
 
+## Usernames (the box on the entrance screen)
+
+Whatever someone types in the box on the entrance screen becomes their name **forever**, tied to their IP address, and is shown above their pill to everyone else. Nobody is told that, on purpose. On later visits the box shows their name and can't be edited. Left empty, "Write something here" appears in red.
+
+| What | Where |
+|---|---|
+| The box, its placeholder (`example`), the red message, their look | `public/entrance.html`: `<input id="name-input">`, `<p id="name-error">` and their `.entrance #name-...` styles |
+| What happens when the button is clicked (save name, then enter) | `onEnterClick()` in `public/js/main.js` |
+| Max length (24) | `MAX_NAME` at the top of `server/index.js` and `maxlength` on the input |
+| Label above the pill: font, size, look | `NAME_FONT`, `NAME_HEIGHT` and `nameSprite()` at the top of `public/js/net.js`. The font (Pirata One) is loaded by the `fonts.googleapis.com` link in `public/index.html` |
+| **Change or delete someone's name** | In the database (Neon console → SQL editor): `UPDATE usernames SET name = 'new' WHERE name = 'old';` or `DELETE FROM usernames WHERE name = 'old';` |
+
+Everyone on the same Wi-Fi / network usually shares one IP, so they share one name.
+
+---
+
+## Typing on the computers
+
+Click **TITLE** or **BODY** on the screen to type there (or press Tab). **Enter makes a new line**; to send, click the **POST** / **CREATE THREAD** button drawn at the bottom right of the screen (or the button of the same name in the bar below). Clicking the IMAGE line opens the file picker.
+
+| What | Where |
+|---|---|
+| Clickable areas and the button's size/position on the screen | `BUTTON` and `AREAS` at the top of `public/js/terminal.js` (in screen pixels, 1024 × 768) |
+| How the screens are drawn | `drawReply()`, `drawThreadForm()`, `drawButton()` in `public/js/terminal.js` |
+
+---
+
 ## Pictures on the walls (lobby + corridor)
 
 Every image in **`public/assets/`** hangs once on a wall: the first in the lobby, the next in the corridor (on the wall across from the room doors), and so on alternating. The server lists the folder by itself, so to add a picture you just drop it in there and push. They're sorted by file name.

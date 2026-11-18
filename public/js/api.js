@@ -26,6 +26,13 @@ const serverApi = {
     listThreads: () => request('threads'),
     // image URLs for the lobby / corridor walls (files in public/assets/)
     listWallImages: () => request('wall-images'),
+    // username, one per IP, permanent: null if not chosen yet
+    getMyName: async () => (await request('me')).name,
+    async setMyName(name) {
+        const body = new FormData();
+        body.append('name', name);
+        return (await request('name', { method: 'POST', body })).name;
+    },
     getReplies: (threadId) => request(`replies?thread_id=${encodeURIComponent(threadId)}`),
     postReply(threadId, text) {
         const body = new FormData();
@@ -76,4 +83,17 @@ export const api = {
     createThread: async (...a) => (await backend()).createThread(...a),
     // demo mode has no server to list public/assets/, so no wall pictures there
     listWallImages: async () => ((await backend()) === serverApi ? serverApi.listWallImages() : []),
+    // demo mode: the name is kept in this browser instead
+    getMyName: async () => ((await backend()) === serverApi ? serverApi.getMyName() : localName.get()),
+    setMyName: async (name) => ((await backend()) === serverApi ? serverApi.setMyName(name) : localName.set(name)),
+};
+
+const localName = {
+    get() { try { return localStorage.getItem('hotel_name'); } catch { return null; } },
+    set(name) {
+        const old = this.get();
+        if (old) return old;
+        try { localStorage.setItem('hotel_name', name); } catch { /* private mode */ }
+        return name;
+    },
 };

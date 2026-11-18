@@ -147,3 +147,18 @@ export async function threadExists(threadId) {
     const { rows } = await pool.query('SELECT 1 FROM threads WHERE thread_id = $1', [threadId]);
     return rows.length > 0;
 }
+
+// ------------------------------------------------------------------ usernames (one per IP, permanent)
+export async function getUsername(ip) {
+    const { rows } = await pool.query('SELECT name FROM usernames WHERE ip = $1', [ip]);
+    return rows[0]?.name ?? null;
+}
+
+// Saves the name unless this IP already has one. Returns the IP's name either way.
+export async function claimUsername(ip, name) {
+    const { rows } = await pool.query(
+        `INSERT INTO usernames (ip, name) VALUES ($1, $2)
+         ON CONFLICT (ip) DO UPDATE SET ip = usernames.ip
+         RETURNING name`, [ip, name]);
+    return rows[0].name;
+}

@@ -36,3 +36,11 @@ CREATE TABLE IF NOT EXISTS posters (
     poster     INTEGER NOT NULL,
     PRIMARY KEY (visitor_id, thread_id)
 );
+
+-- Usernames: one per IP address, set once on the entrance screen and never changed.
+-- Shown above that player's pill.
+CREATE TABLE IF NOT EXISTS usernames (
+    ip         TEXT        PRIMARY KEY,
+    name       VARCHAR(24) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

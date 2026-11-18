@@ -120,12 +120,59 @@ player.controls.addEventListener('unlock', () => {
     if (state === 'playing') state = 'free';
 });
 
-ui.enter.addEventListener('click', () => {
+function enterHotel() {
     document.body.classList.add('entered');     // shows the jester (style.css)
     show(ui.start, false);
     show(ui.hud);
     lockPointer();
-});
+}
+
+// ---------------------------------------------------------------- username box (entrance.html)
+// One name per IP, saved forever on the first visit, then shown (read-only) on later visits.
+// It's shown above your pill to other players. Nobody is told that, on purpose.
+const nameInput = $('name-input');
+const nameError = $('name-error');
+let nameLocked = false;
+
+function lockName(name) {
+    nameLocked = true;
+    nameInput.value = name;
+    nameInput.readOnly = true;
+    nameInput.removeAttribute('placeholder');
+}
+
+async function loadMyName() {
+    if (!nameInput) return;
+    try {
+        const name = await api.getMyName();
+        if (name) lockName(name);
+    } catch (err) { console.warn('Could not load username:', err.message); }
+}
+
+let entering = false;
+async function onEnterClick() {
+    if (ui.enter.disabled || entering) return;
+    if (!nameInput || nameLocked) return enterHotel();
+    const name = nameInput.value.trim();
+    if (!name) {
+        if (nameError) nameError.textContent = 'Write something here';
+        nameInput.focus();
+        return;
+    }
+    entering = true;
+    try {
+        lockName(await api.setMyName(name));
+        if (nameError) nameError.textContent = '';
+        enterHotel();
+    } catch (err) {
+        if (nameError) nameError.textContent = err.message;
+    } finally {
+        entering = false;
+    }
+}
+ui.enter.addEventListener('click', onEnterClick);
+nameInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); onEnterClick(); } });
+nameInput?.addEventListener('input', () => { if (nameError) nameError.textContent = ''; });
 
 const touchControls = touch ? new TouchControls({
     camera, player,
@@ -191,8 +238,26 @@ addEventListener('keydown', (e) => {
 renderer.domElement.addEventListener('mousedown', (e) => {
     if (state === 'playing' && e.button === 0) gun.fire();      // no ammo, no cooldown
     else if (state === 'free') lockPointer();
-    else if (state === 'seated') terminal.focus();
+    else if (state === 'seated' && !tween) {
+        clickScreen(e);
+        terminal.focus();
+    }
 });
+
+// Sitting at a computer: a click on its screen picks a field / presses POST.
+const mouseNdc = new THREE.Vector2();
+const screenRay = new THREE.Raycaster();
+function clickScreen(e) {
+    const screen = terminal.station?.screen;
+    if (!screen) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouseNdc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    screenRay.setFromCamera(mouseNdc, camera);
+    const hit = screenRay.intersectObject(screen, false)[0];
+    if (!hit?.uv) return;
+    const { width, height } = terminal.station.canvas;
+    terminal.clickAt(hit.uv.x * width, (1 - hit.uv.y) * height);
+}
 
 // reading a reply in full
 function openReader(reply) {
@@ -436,7 +501,7 @@ renderer.setAnimationLoop(() => {
 function setDataMode(text) { const el = $('data-mode'); if (el) el.textContent = text; }
 
 try {
-    await hotel.load();
+    await Promise.all([hotel.load(), loadMyName()]);
     ui.enter.disabled = false;
     ui.enter.textContent = ui.enter.dataset.ready || 'Enter';     // text set by data-ready="..." in entrance.html
     if (await api.mode() === 'mock') setDataMode('Demo data (no server connected)');

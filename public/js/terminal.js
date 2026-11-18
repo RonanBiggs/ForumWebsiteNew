@@ -1,7 +1,8 @@
 // terminal.js - typing on a computer screen (a Station from computer.js).
 //
-//   'reply'  station (in a room):  type a reply, Enter posts it, or attach an image.
-//   'thread' station (lobby):      TITLE -> BODY fields + optional image, creates a thread.
+//   'reply'  station (in a room):  type a reply (Enter = new line), click POST on the screen, or attach an image.
+//   'thread' station (lobby):      TITLE / BODY fields (click one to type in it) + optional image,
+//                                  click CREATE THREAD on the screen.
 //
 // Keystrokes go into a hidden <textarea> (so paste, arrow keys, IME etc. just
 // work); we mirror its contents onto the station's screen canvas.
@@ -10,6 +11,15 @@ import { wrapText, FONTS } from './textures.js';
 import { drawScreenBackground } from './computer.js';
 
 const MONO = FONTS.MONO;
+
+// Clickable areas on the 1024 x 768 screen canvas (also used to draw them).
+const BUTTON = { x: 1024 - 380, y: 768 - 105, w: 330, h: 70 };      // POST / CREATE THREAD
+const AREAS = {
+    title: { y0: 100, y1: 205 },
+    body: { y0: 205, y1: 550 },
+    image: { y0: 550, y1: 640 },
+};
+const inRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
 export class Terminal {
     constructor({ input, fileInput, hint, api, onExit, onThreadCreated }) {
@@ -46,8 +56,8 @@ export class Terminal {
         this.input.value = '';
         this.form = station.kind === 'thread' ? { title: '', body: '', image: null, field: 'title' } : null;
         this.hint.textContent = station.kind === 'thread'
-            ? 'Enter: next field / create · Tab: switch field · Shift+Enter: new line · Esc: stand up'
-            : 'Enter: post · Shift+Enter: new line · Esc: stand up';
+            ? 'Click TITLE or BODY to type there · Enter: new line · click CREATE THREAD to post · Esc: stand up'
+            : 'Enter: new line · click POST on the screen to send · Esc: stand up';
         this.focus();
         this.draw();
     }
@@ -94,19 +104,31 @@ export class Terminal {
         if (!this.station) return;
         if (e.key === 'Escape') { e.preventDefault(); this.onExit(); return; }
 
+        // Enter types a new line (the textarea does that by itself). Posting is the button on the screen.
         if (this.mode === 'thread') {
             if (e.key === 'Tab') {
                 e.preventDefault();
                 this.switchField(this.form.field === 'title' ? 'body' : 'title');
-            } else if (e.key === 'Enter' && (this.form.field === 'title' || !e.shiftKey)) {
-                e.preventDefault();          // title is one line; Enter on it moves to the body
-                if (this.form.field === 'title') this.switchField('body');
-                else this.createThread();
+            } else if (e.key === 'Enter' && this.form.field === 'title') {
+                e.preventDefault();          // the title is one line: Enter on it moves down to the body
+                this.switchField('body');
             }
-        } else if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            this.postReply();
         }
+    }
+
+    // A click on the screen at canvas pixel (x, y). Returns true if it hit something.
+    clickAt(x, y) {
+        if (!this.station) return false;
+        if (inRect(x, y, BUTTON)) { this.submit(); return true; }
+        if (this.mode !== 'thread') return false;
+        for (const field of ['title', 'body']) {
+            if (y >= AREAS[field].y0 && y < AREAS[field].y1) {
+                if (this.form.field !== field) this.switchField(field);
+                return true;
+            }
+        }
+        if (y >= AREAS.image.y0 && y < AREAS.image.y1) { this.attach(); return true; }
+        return false;
     }
 
     attachFile(file) {
@@ -189,10 +211,25 @@ export class Terminal {
         if (this.mode === 'thread') this.drawThreadForm(g, w, h);
         else this.drawReply(g, w, h);
 
+        // status (left) and the POST / CREATE THREAD button (bottom right)
         g.font = `26px ${MONO}`;
         g.fillStyle = this.status.startsWith('ERROR') ? '#ff5555' : '#dddddd';
-        wrapText(g, this.status, w - 100).slice(0, 2).forEach((l, i) => g.fillText(l, 50, h - 90 + i * 32));
+        wrapText(g, this.status, BUTTON.x - 80).slice(0, 2).forEach((l, i) => g.fillText(l, 50, h - 95 + i * 32));
+        this.drawButton(g, this.mode === 'thread' ? 'CREATE THREAD' : 'POST');
         st.texture.needsUpdate = true;
+    }
+
+    drawButton(g, label) {
+        const b = BUTTON;
+        g.fillStyle = this.busy ? '#666666' : '#ffffff';
+        g.fillRect(b.x, b.y, b.w, b.h);
+        g.fillStyle = '#1a1a1a';
+        g.font = `bold 34px ${MONO}`;
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText(label, b.x + b.w / 2, b.y + b.h / 2 + 2);
+        g.textAlign = 'left';
+        g.textBaseline = 'top';
     }
 
     drawReply(g, w) {
@@ -204,6 +241,7 @@ export class Terminal {
         g.font = `34px ${MONO}`;
         const lines = wrapText(g, '> ' + this.withCursor(this.input.value, true), w - 100);
         lines.slice(-12).forEach((l, i) => g.fillText(l, 50, 120 + i * 42));
+        // (12 lines end at y ~620, above the status line and POST button)
     }
 
     drawThreadForm(g, w) {
@@ -234,6 +272,6 @@ export class Terminal {
         label('IMAGE (optional)', 560, false);
         g.fillStyle = '#ffffff';
         g.font = `28px ${MONO}`;
-        g.fillText(f.image ? f.image.name : 'none, use "Attach image" below', 90, 600);
+        g.fillText(f.image ? f.image.name : 'none, click here to attach one', 90, 600);
     }
 }

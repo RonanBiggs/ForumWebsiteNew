@@ -9,6 +9,9 @@
     Rules:
       - Keep <button id="enter-btn">. It's disabled until the hotel has loaded, then
         shows the text in data-ready="...".
+      - <input id="name-input"> is the username box (one name per IP, permanent, shown
+        above your pill to other players). <p id="name-error"> shows "Write something here"
+        when it's left empty. Remove both to turn names off.
       - <script> tags are ignored here. Put images in public/ and use e.g. src="logo.png".
       - Start every CSS rule with .entrance so it can't change the rest of the game.
 -->
@@ -23,7 +26,9 @@
         inset: 0;
         display: flex;
         align-items: center;
+        flex-direction: column;
         justify-content: center;
+        gap: 14px;
         padding: 16px;
         background: #ff69b4;            /* hot pink */
         font-family: Georgia, 'Times New Roman', serif;
@@ -41,12 +46,29 @@
     }
     .entrance #enter-btn:hover:not(:disabled) { background: #ff1493; color: #fff; }
     .entrance #enter-btn:disabled { opacity: 0.6; cursor: wait; }
+    .entrance #name-input {
+        font: inherit;
+        font-size: 1.2rem;
+        width: min(320px, 100%);
+        padding: 10px 14px;
+        border: 2px solid #fff;
+        border-radius: 6px;
+        text-align: center;
+        color: #333;
+        background: #fff;
+    }
+    .entrance #name-input { font-family: 'Pirata One', cursive; font-size: 1.5rem; }
+    .entrance #name-input::placeholder { color: #bbb; }
+    .entrance #name-input[readonly] { background: #ffd1e8; color: #c2185b; cursor: default; }
+    .entrance #name-error { margin: 0; min-height: 1.3em; color: #d00000; font-weight: bold; font-family: system-ui, Arial, sans-serif; }
 </style>
 </head>
 <body>
 
 <div class="entrance">
+    <input id="name-input" type="text" placeholder="example" maxlength="24" autocomplete="off" spellcheck="false" />
     <button id="enter-btn" data-ready="The Dom Forum" disabled>The Dom Forum</button>
+    <p id="name-error"></p>
 </div>
 
 </body>

@@ -21,6 +21,7 @@ export class Station {
         this.room = room;
         this.drawIdleFn = drawIdle;
         this.desk = null;
+        this.screen = null;        // the screen mesh (its UVs map onto this.canvas)
         this.canvas = document.createElement('canvas');
         this.canvas.width = 1024;
         this.canvas.height = 768;
@@ -95,6 +96,7 @@ export function buildComputerDesk(parent, mats, station, { x = 0, z = 0, rotY = 
         const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.33), screenMat);
         screen.position.set(0, 0.28, 0.247);
         pc.add(screen);
+        station.screen = screen;                  // clicks on it are turned into canvas positions (main.js)
         addBox(pc, { w: 0.46, h: 0.03, d: 0.16, y: 0.015, z: 0.42, mat: mats.computer });
         [body, bezel, screen].forEach(tag);
         onChange();
@@ -111,7 +113,7 @@ export function buildComputerDesk(parent, mats, station, { x = 0, z = 0, rotY = 
             model.traverse((o) => {
                 if (!o.isMesh) return;
                 tag(o);
-                if (o.name === 'Screen') o.material = screenMat;
+                if (o.name === 'Screen') { o.material = screenMat; station.screen = o; }
             });
             pc.add(model);
             onChange();

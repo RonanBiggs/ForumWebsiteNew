@@ -15,6 +15,7 @@ import { attachMultiplayer } from './multiplayer.js';
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_TEXT = 5000;
 const MAX_TITLE = 255;
+const MAX_NAME = 24;
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;     // keep small: Neon's free database is 0.5 GB in total
 const WRITES_PER_MINUTE = 10;                // per IP: posts + uploads + new threads
 
@@ -138,6 +139,21 @@ app.get('/api/images/:id', route(async (req, res) => {
         'X-Content-Type-Options': 'nosniff',
     });
     res.send(image.data);
+}));
+
+// Usernames: one per IP address, set once on the entrance screen, can never be changed.
+app.get('/api/me', route(async (req, res) => {
+    res.json({ name: await db.getUsername(req.ip) });
+}));
+
+app.post('/api/name', rateLimit, upload.none(), route(async (req, res) => {
+    const name = cleanText(req.body.name, 'Name', { required: true, max: MAX_NAME })
+        .replace(/[\p{C}]/gu, '')            // no control / invisible characters
+        .replace(/\s+/g, ' ');
+    if (!name) throw bad('Name cannot be empty.');
+    const saved = await db.claimUsername(req.ip, name);   // already had one: keeps the old one
+    multiplayer.setName(req.ip, saved);
+    res.json({ name: saved });
 }));
 
 // Pictures for the lobby / corridor walls: every image file in public/assets/.
