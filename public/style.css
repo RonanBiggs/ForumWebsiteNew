@@ -168,3 +168,17 @@ body.touch .bar {
     bottom: calc(12px + env(safe-area-inset-bottom));
 }
 body.touch .bar button { padding: 10px 12px; }
+
+/* ---------------------------------------------------------------- Dancing jester (index.html) */
+#jester {
+    position: fixed;
+    left: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    width: 160px;
+    z-index: 20;                 /* on top of everything, menus included */
+    pointer-events: none;        /* clicks/touches go straight through it */
+    mix-blend-mode: multiply;    /* Tenor draws it on white: this makes the white see-through */
+}
+#jester iframe { pointer-events: none; }
+body:not(.entered) #jester { visibility: hidden; }     /* not on the entrance screen */
+body.touch #jester { width: 110px; }

@@ -120,7 +120,12 @@ player.controls.addEventListener('unlock', () => {
     if (state === 'playing') state = 'free';
 });
 
-ui.enter.addEventListener('click', () => { show(ui.start, false); show(ui.hud); lockPointer(); });
+ui.enter.addEventListener('click', () => {
+    document.body.classList.add('entered');     // shows the jester (style.css)
+    show(ui.start, false);
+    show(ui.hud);
+    lockPointer();
+});
 
 const touchControls = touch ? new TouchControls({
     camera, player,
