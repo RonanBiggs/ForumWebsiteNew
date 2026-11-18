@@ -24,6 +24,8 @@ async function request(path, options = {}) {
 
 const serverApi = {
     listThreads: () => request('threads'),
+    // image URLs for the lobby / corridor walls (files in public/assets/)
+    listWallImages: () => request('wall-images'),
     getReplies: (threadId) => request(`replies?thread_id=${encodeURIComponent(threadId)}`),
     postReply(threadId, text) {
         const body = new FormData();
@@ -72,4 +74,6 @@ export const api = {
     postReply: async (...a) => (await backend()).postReply(...a),
     uploadImage: async (...a) => (await backend()).uploadImage(...a),
     createThread: async (...a) => (await backend()).createThread(...a),
+    // demo mode has no server to list public/assets/, so no wall pictures there
+    listWallImages: async () => ((await backend()) === serverApi ? serverApi.listWallImages() : []),
 };

@@ -59,7 +59,7 @@ export function disposeTree(object) {
         if (!o.isMesh) return;
         o.geometry.dispose();
         if (o.userData.ownsMaterial) {
-            o.material.map?.dispose();
+            if (!o.userData.keepMap) o.material.map?.dispose();
             o.material.dispose();
         }
     });

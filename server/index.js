@@ -5,6 +5,7 @@
 
 import http from 'node:http';
 import crypto from 'node:crypto';
+import { readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import multer from 'multer';
@@ -137,6 +138,16 @@ app.get('/api/images/:id', route(async (req, res) => {
         'X-Content-Type-Options': 'nosniff',
     });
     res.send(image.data);
+}));
+
+// Pictures for the lobby / corridor walls: every image file in public/assets/.
+const ASSETS_DIR = fileURLToPath(new URL('../public/assets', import.meta.url));
+app.get('/api/wall-images', route(async (req, res) => {
+    const files = await readdir(ASSETS_DIR).catch(() => []);
+    res.json(files
+        .filter((f) => /\.(jpe?g|png|gif|webp)$/i.test(f))
+        .sort((a, b) => a.localeCompare(b))
+        .map((f) => 'assets/' + encodeURIComponent(f)));
 }));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Unknown API endpoint.' }));

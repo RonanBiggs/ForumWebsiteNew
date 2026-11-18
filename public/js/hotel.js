@@ -20,6 +20,20 @@ const HALF = 2;           // corridor half-width
 const LOBBY = { halfW: 5, depth: 6 };
 const LIGHT_POOL = 6;     // a few real lights that follow the player (cheap)
 
+// WALL PICTURES: every image in public/assets/ hangs once on a wall, alternating
+// lobby / corridor. Spots are tried in this order; add or move spots here.
+const PICTURE = { H: 1.4, Y: 1.6, FRAME: 0.06 };     // picture height (m), centre height, frame border
+const LOBBY_SPOTS = [                                // x, z, rotY (which way it faces)
+    { x: -LOBBY.halfW, z: 3, rotY: Math.PI / 2 },         // left wall, facing the lobby computer
+    { x: 0, z: LOBBY.depth, rotY: Math.PI },              // back wall, middle
+    { x: -3.6, z: ROOM.T, rotY: 0 },                      // front wall, left of the corridor
+    { x: 3.6, z: ROOM.T, rotY: 0 },                       // front wall, right of the corridor
+    { x: -3, z: LOBBY.depth, rotY: Math.PI },             // back wall, left
+    { x: 3, z: LOBBY.depth, rotY: Math.PI },              // back wall, right
+    { x: -LOBBY.halfW, z: 1.2, rotY: Math.PI / 2 },
+    { x: -LOBBY.halfW, z: 4.8, rotY: Math.PI / 2 },
+];
+
 export class Hotel {
     constructor(scene, mats, api) {
         this.scene = scene;
@@ -32,6 +46,9 @@ export class Hotel {
         this.dirty = true;
         this.lightSpots = [];
         this._tmp = new THREE.Vector3();
+        this.wallImages = [];                 // URLs from public/assets/
+        this.pictureTextures = new Map();     // url -> texture (kept when the corridor is rebuilt)
+        this.pictureMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 });   // frames
 
         // the lobby computer, where new threads are started
         this.lobbyStation = new Station({
@@ -55,6 +72,10 @@ export class Hotel {
     }
 
     async load() {
+        this.wallImages = await this.api.listWallImages().catch((err) => {
+            console.warn('No wall pictures:', err.message);
+            return [];
+        });
         const threads = await this.api.listThreads();
         threads.forEach((t) => this.addRoom(t, false));
         this.layout();
@@ -131,7 +152,62 @@ export class Hotel {
         // w/h = size in metres, y = height of its centre, z = position along the wall.
         addSign(g, labelTexture(CONFIG.LOBBY_SIGN_TEXT), { w: 2.6, h: 0.49, x: halfW - 0.01, y: 2.2, z: 3, rotY: -Math.PI / 2 });
 
+        this.hangPictures(g, L);
         this.dirty = true;
+    }
+
+    // Every wall image once: alternating lobby / corridor (the corridor's left
+    // wall, across from the doors). If one side is full, the rest go on the other.
+    hangPictures(g, L) {
+        const { SLOT } = ROOM;
+        const corridor = [];
+        for (let z = -SLOT / 2; z > -L + 1; z -= SLOT) corridor.push({ x: -HALF, z, rotY: Math.PI / 2 });   // opposite each door
+        for (let z = -SLOT; z > -L + 1; z -= SLOT) corridor.push({ x: -HALF, z, rotY: Math.PI / 2 });       // then in between
+        const lobby = [...LOBBY_SPOTS];
+        this.wallImages.forEach((url, i) => {
+            const first = i % 2 === 0 ? lobby : corridor;
+            const spot = first.shift() ?? (first === lobby ? corridor : lobby).shift();
+            if (spot) this.addPicture(g, url, spot);
+            else console.warn('No wall space left for', url);
+        });
+    }
+
+    addPicture(parent, url, { x, z, rotY }) {
+        const pic = new THREE.Group();
+        pic.position.set(x, PICTURE.Y, z);
+        pic.rotation.y = rotY;
+        parent.add(pic);
+        const f = PICTURE.FRAME;
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(1, PICTURE.H + 2 * f, 0.04), this.pictureMat);
+        frame.position.z = 0.02;
+        const photo = new THREE.Mesh(new THREE.PlaneGeometry(1, PICTURE.H), new THREE.MeshBasicMaterial({ toneMapped: false }));
+        photo.position.z = 0.041;
+        photo.userData.ownsMaterial = true;     // the material is freed on rebuild...
+        photo.userData.keepMap = true;          // ...but the texture stays cached for the next one
+        pic.add(frame, photo);
+
+        // width follows the image's shape once it has loaded
+        const fit = (tex) => {
+            const w = PICTURE.H * (tex.image.width / tex.image.height);
+            photo.scale.x = w;
+            frame.scale.x = w + 2 * f;
+            photo.material.map = tex;
+            photo.material.needsUpdate = true;
+        };
+        let tex = this.pictureTextures.get(url);
+        if (!tex) {
+            tex = new THREE.TextureLoader().load(url, () => {
+                tex.userData.ready.forEach((fn) => fn(tex));
+                tex.userData.ready = [];
+            });
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.anisotropy = 8;
+            tex.userData.ready = [];
+            this.pictureTextures.set(url, tex);
+        }
+        photo.scale.x = frame.scale.x = 0.0001;   // hidden until loaded
+        if (tex.image?.width) fit(tex);
+        else tex.userData.ready.push(fit);
     }
 
     // ------------------------------------------------------------------ queries

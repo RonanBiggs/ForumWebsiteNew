@@ -51,6 +51,27 @@ Long text shrinks to fit, and then gets cut off with "…".
 
 ---
 
+## Pictures on the walls (lobby + corridor)
+
+Every image in **`public/assets/`** hangs once on a wall: the first in the lobby, the next in the corridor (on the wall across from the room doors), and so on alternating. The server lists the folder by itself, so to add a picture you just drop it in there and push. They're sorted by file name.
+
+**Shrink photos and strip their location before adding them.** Phone photos are 3 to 7 MB and contain GPS coordinates. Anyone who downloads the picture from the site can read those. With ImageMagick:
+```bash
+magick Assets/MyPhoto.jpg -auto-orient -resize '1600x1600>' -strip -quality 82 public/assets/MyPhoto.jpg
+```
+(`-strip` removes the GPS/camera info, `-resize` makes it about 200–400 KB.) Your originals in `Assets/` are kept out of git on purpose (see `.gitignore`).
+
+| What | Where |
+|---|---|
+| Picture height, how high it hangs, frame thickness | `PICTURE` at the top of `public/js/hotel.js` (the width follows each image's shape) |
+| Where pictures can go in the lobby (and in what order) | `LOBBY_SPOTS` at the top of `public/js/hotel.js` |
+| Where they go in the corridor | `hangPictures()` in `public/js/hotel.js`: first across from each door, then in between |
+| Frame colour | `pictureMat` in the `Hotel` constructor in `public/js/hotel.js` |
+
+Not shown in demo mode (`npx serve public`), because there's no server there to list the folder.
+
+---
+
 ## The gun
 
 Click (or **F**, hold it to spray) on a computer, **FIRE** on a phone. No ammo, no cooldown. A ball that hits another player launches them.

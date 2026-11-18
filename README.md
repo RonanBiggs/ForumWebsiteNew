@@ -12,6 +12,7 @@ Everything visual is a **placeholder**: grid textures, box furniture, plain UI, 
 - **New thread:** sit at the computer in the lobby and fill in the **title**, an optional **body** and an optional **image**.
 - **Gun:** click (or F) to shoot a ball. No ammo, no cooldown. A ball that hits another player launches them across the room.
 - **Phones/tablets:** on-screen joystick (left thumb), drag to look (right thumb), a FIRE button, and a USE button that pops up when you can interact with something.
+- **Wall pictures:** every image in `public/assets/` hangs once in the lobby or the corridor (across from the doors).
 - **Entrance screen:** its own file, `public/entrance.html` (see EDIT-INSTRUCTIONS.md).
 - **Multiplayer:** everyone on the site sees everyone else as a **pill**, live, over a WebSocket. New threads and replies show up for everybody immediately, and rooms re-sort themselves.
 
