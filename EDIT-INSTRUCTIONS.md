@@ -99,7 +99,7 @@ On the lobby computer, **ROOM SCAN** picks a 3D scan that becomes the new thread
 - **Formats:** GLB (best: keeps the colours/textures; Polycam "GLB", Scaniverse "GLB"), glTF (single file), FBX, OBJ (no textures here), PLY (mesh or point cloud). Not USDZ: export GLB instead. Max **25 MB**. Choose a reduced/medium quality export if it's bigger.
 - **How it's placed:** turned so its long side runs away from the door, scaled (same in all directions) to fill the room's width or height, set on the floor, starting at the door. The room gets deeper if the scan needs it. The part nearest the door is cut away so you can see in.
 - **Everything else works as usual:** reply boards (hung just inside the scan's left wall), floating shapes, the computer, collisions (the normal room's walls, which stay behind the scan and show through its holes). You can walk through scanned furniture.
-- **Storage:** scans are stored in the database like images. Neon's free plan is 0.5 GB in total, so that's roughly 20 big scans. For more, the scans would need to move to file storage (e.g. Cloudflare R2).
+- **Storage:** scans are stored in the database like images. When the database gets near its limit, the oldest uploads are deleted automatically (see "Database clean-up" below), so old scans eventually go and those rooms turn back into normal rooms.
 
 | What | Where |
 |---|---|
@@ -134,6 +134,22 @@ magick Assets/MyPhoto.jpg -auto-orient -resize '1600x1600>' -strip -quality 82 p
 - The upload endpoint is `POST /api/wall-image` in `server/index.js` (same size limit and spam limit as replies).
 
 Not shown in demo mode (`npx serve public`), because there's no server there to list the folder.
+
+---
+
+## Database clean-up (staying under the size limit)
+
+Everything uploaded (images, 3D models, room scans, replaced wall pictures) is stored in the database. `server/prune.js` keeps it under the limit:
+
+- When the database reaches **950 MB**, the **oldest uploads are deleted first**, by upload date only (no preference for big files), until the live data is down to **850 MB**.
+- Deleting an upload also removes its image/model reply, a wall frame's replacement (the frame shows its original picture again) and a room scan (the room becomes a normal room). Text replies stay.
+- Only if there are no uploads left and it's still too big are the oldest threads deleted.
+- It checks at startup, every hour, and about a minute after each upload. Each clean-up shows in the Render logs as `[prune] ...`.
+
+| What | Where |
+|---|---|
+| The two numbers | `PRUNE_AT_MB` / `PRUNE_TO_MB` at the top of `server/prune.js`, or set them as environment variables in Render (no code change needed) |
+| What gets deleted with an upload | `deleteUpload()` in `server/prune.js` |
 
 ---
 

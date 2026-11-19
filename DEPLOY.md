@@ -24,7 +24,7 @@ After that, every `git push` to `main` redeploys automatically.
 - **Everything runs as one server instance.** Multiplayer works because everyone connects to that one instance. That's fine at this size.
 
 **Neon (free Postgres)**
-- **0.5 GB storage per project.** Images are stored in the database, so they use it up fastest. Uploads are capped at 3 MB each (`MAX_IMAGE_BYTES` in `server/index.js`), so that's roughly 150+ big images, or many more small ones.
+- **Storage limit (1 GB on your plan).** Uploads (images, 3D models, room scans) are stored in the database, so they use it up fastest. **The server cleans up by itself:** when the database reaches 950 MB it deletes the oldest uploads (oldest first, whatever their size) until the live data is back to 850 MB. See `server/prune.js`. To change the numbers without touching code, set `PRUNE_AT_MB` / `PRUNE_TO_MB` in Render's **Environment** tab. Each clean-up is written to the Render logs as `[prune] ...`.
   - If you outgrow it, the next step is moving images to object storage (e.g. Cloudflare R2's free tier).
 - **The database suspends after ~5 minutes idle.** The first query after that takes a moment longer (usually under a second). You'll mostly notice it stacked on top of Render's wake-up.
 - **Compute hours per month are limited on the free plan.** A hobby forum fits easily, but check Neon's dashboard (Billing / Usage) if the site gets busy.

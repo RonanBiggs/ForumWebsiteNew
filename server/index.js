@@ -12,6 +12,7 @@ import multer from 'multer';
 import * as db from './db.js';
 import { attachMultiplayer } from './multiplayer.js';
 import { clientIp } from './ip.js';
+import { schedulePrune, startPruning } from './prune.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_TEXT = 5000;
@@ -19,7 +20,7 @@ const MAX_TITLE = 255;
 const MAX_NAME = 24;
 const SHAPES = ['cube', 'pyramid', 'sphere', 'icosahedron'];     // what an image reply floats as
 const cleanShape = (value) => (SHAPES.includes(value) ? value : 'cube');
-const MAX_IMAGE_BYTES = 3 * 1024 * 1024;     // keep small: Neon's free database is 0.5 GB in total
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024;     // keep small: uploads live in the database (see prune.js for its size limit)
 const MAX_MODEL_BYTES = 10 * 1024 * 1024;    // 3D models (.glb .gltf .obj .stl .fbx)
 const MAX_SCAN_BYTES = 25 * 1024 * 1024;     // room scans (Polycam, Scaniverse...): .glb .gltf .fbx .obj .ply
 const WRITES_PER_MINUTE = 10;                // per IP: posts + uploads + new threads
@@ -185,6 +186,7 @@ app.post('/api/upload', rateLimit, upload.single('image'), route(async (req, res
     if (!image) throw bad('Please choose an image or 3D model to upload.');
     await requireThread(threadId);
     const reply = await db.addImageReply(req.visitorId, threadId, image, cleanShape(req.body.shape));
+    schedulePrune();
     multiplayer.broadcast({ type: 'reply', reply });
     res.json(reply);
 }));
@@ -197,6 +199,7 @@ app.post('/api/post', rateLimit, upload.single('image'), route(async (req, res) 
     if (!text && !file) throw bad('Write something or attach a file.');
     await requireThread(threadId);
     const replies = await db.addPost(req.visitorId, threadId, text, file, cleanShape(req.body.shape));
+    if (file) schedulePrune();
     for (const reply of replies) multiplayer.broadcast({ type: 'reply', reply });
     res.json(replies);
 }));
@@ -208,6 +211,7 @@ app.post('/api/create_thread', rateLimit, threadUpload, route(async (req, res) =
     const image = fileFromUpload(req.files?.image?.[0]);    // an image or a 3D model
     const scan = scanFromUpload(req.files?.scan?.[0]);      // optional: the room itself
     const thread = await db.createThread(req.visitorId, title, body, image, cleanShape(req.body.shape), scan);
+    if (image || scan) schedulePrune();
     multiplayer.broadcast({ type: 'thread', thread });
     res.json(thread);
 }));
@@ -267,6 +271,7 @@ app.post('/api/wall-image', rateLimit, upload.single('image'), route(async (req,
     const image = imageFromUpload(req.file);
     if (!image) throw bad('Please choose an image.');
     const url = await db.setWallPicture(slot, image);
+    schedulePrune();
     multiplayer.broadcast({ type: 'wallImage', slot, url });
     res.json({ slot, url });
 }));
@@ -291,4 +296,5 @@ const server = http.createServer(app);
 const multiplayer = attachMultiplayer(server);
 
 await db.setupSchema();          // creates tables on first run, no-op afterwards
+startPruning();                  // deletes the oldest data when the database gets near its limit (prune.js)
 server.listen(PORT, () => console.log(`Hotel running on http://localhost:${PORT}`));
