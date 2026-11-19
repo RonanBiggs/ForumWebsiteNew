@@ -12,6 +12,7 @@ Everything visual is a **placeholder**: grid textures, box furniture, plain UI, 
 - **New thread:** sit at the computer in the lobby and fill in the **title**, an optional **body** and an optional **image**. **ROOM SCAN** uses a 3D scan from a phone app (Polycam, Scaniverse…) as the room itself.
 - **Gun:** click (or F) to shoot a ball. No ammo, no cooldown. A ball that hits another player launches them across the room.
 - **Phones/tablets:** on-screen joystick (left thumb), drag to look (right thumb), a FIRE button, and a USE button that pops up when you can interact with something.
+- **The lever:** on the lobby wall. Flip it (E) and every picture frame spins like a slot machine and lands on a random uploaded image or `.obj`, for everyone.
 - **Usernames:** the box on the entrance screen sets your name forever (one per IP), shown above your pill in a pirate font.
 - **Wall pictures:** every image in `public/assets/` hangs once in the lobby or the corridor (across from the doors). Press **E** at one to replace it with your own image, for everyone. Empty frames fill the rest of the corridor as it grows.
 - **Entrance screen:** its own file, `public/entrance.html` (see EDIT-INSTRUCTIONS.md).

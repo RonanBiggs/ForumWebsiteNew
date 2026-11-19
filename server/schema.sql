@@ -63,3 +63,20 @@ ALTER TABLE replies ADD COLUMN IF NOT EXISTS attached_to INTEGER;
 
 -- A 3D scan (Polycam, Scaniverse...) that IS the thread's room: the file in images.
 ALTER TABLE threads ADD COLUMN IF NOT EXISTS scan_id INTEGER REFERENCES images (image_id);
+
+-- Room scans can be big (up to 300 MB), so they're stored in 1 MB pieces in their own
+-- tables and streamed in and out (never held in memory whole). threads.scan_file_id
+-- points here; older scans used threads.scan_id (in images) and still work.
+CREATE TABLE IF NOT EXISTS scans (
+    scan_id    SERIAL      PRIMARY KEY,
+    mime       VARCHAR(32) NOT NULL,
+    bytes      BIGINT      NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS scan_chunks (
+    scan_id INTEGER NOT NULL REFERENCES scans (scan_id) ON DELETE CASCADE,
+    n       INTEGER NOT NULL,                 -- piece number, from 0
+    data    BYTEA   NOT NULL,
+    PRIMARY KEY (scan_id, n)
+);
+ALTER TABLE threads ADD COLUMN IF NOT EXISTS scan_file_id INTEGER REFERENCES scans (scan_id) ON DELETE SET NULL;

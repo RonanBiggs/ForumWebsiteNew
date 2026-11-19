@@ -172,6 +172,17 @@ export const mockApi = {
         });
     },
 
+    // the lever, demo mode: the demo image replies, in this browser only
+    async shufflePictures(slots) {
+        await delay();
+        const pool = db.replies.filter((r) => Number(r.image) === 1).map((r) => r.post_content);
+        if (!pool.length) throw new Error('Nothing uploaded yet.');
+        return {
+            id: 'demo-' + Date.now(),
+            pictures: slots.map((slot) => ({ slot, url: pool[Math.floor(Math.random() * pool.length)], model: false })),
+        };
+    },
+
     async getReplies(threadId) {
         await delay(250);
         return clone(db.replies.filter(r => r.post_thread === threadId).sort((a, b) => a.post_id - b.post_id));

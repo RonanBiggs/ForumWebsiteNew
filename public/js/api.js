@@ -26,6 +26,12 @@ const serverApi = {
     listThreads: () => request('threads'),
     // lobby / corridor pictures: [{ slot, url }] (slot = original file in public/assets/)
     listWallImages: () => request('wall-images'),
+    // the lobby lever: random uploaded image / .obj in every frame -> { id, pictures: [{ slot, url, model }] }
+    shufflePictures(slots) {
+        const body = new FormData();
+        body.append('slots', slots.join(','));
+        return request('shuffle-pictures', { method: 'POST', body });
+    },
     setWallImage(slot, file) {
         const body = new FormData();
         body.append('slot', slot);
@@ -103,6 +109,7 @@ export const api = {
     createThread: async (...a) => (await backend()).createThread(...a),
     // demo mode has no server to list public/assets/, so no wall pictures there
     listWallImages: async () => ((await backend()) === serverApi ? serverApi.listWallImages() : []),
+    shufflePictures: async (slots) => ((await backend()) === serverApi ? serverApi.shufflePictures(slots) : mockApi.shufflePictures(slots)),
     // demo mode: only changes it in this browser, until reload
     setWallImage: async (slot, file) => ((await backend()) === serverApi
         ? serverApi.setWallImage(slot, file)

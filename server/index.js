@@ -5,14 +5,15 @@
 
 import http from 'node:http';
 import crypto from 'node:crypto';
-import { readdir } from 'node:fs/promises';
+import { readdir, open as openFile, readFile, unlink } from 'node:fs/promises';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import multer from 'multer';
 import * as db from './db.js';
 import { attachMultiplayer } from './multiplayer.js';
 import { clientIp } from './ip.js';
-import { schedulePrune, startPruning } from './prune.js';
+import { schedulePrune, startPruning, makeRoomFor } from './prune.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_TEXT = 5000;
@@ -22,7 +23,8 @@ const SHAPES = ['cube', 'pyramid', 'sphere', 'icosahedron'];     // what an imag
 const cleanShape = (value) => (SHAPES.includes(value) ? value : 'cube');
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;     // keep small: uploads live in the database (see prune.js for its size limit)
 const MAX_MODEL_BYTES = 10 * 1024 * 1024;    // 3D models (.glb .gltf .obj .stl .fbx)
-const MAX_SCAN_BYTES = 25 * 1024 * 1024;     // room scans (Polycam, Scaniverse...): .glb .gltf .fbx .obj .ply
+const MAX_SCAN_BYTES = 300 * 1024 * 1024;    // room scans (Polycam, Scaniverse...): .glb .gltf .fbx .obj .ply, streamed (never in memory)
+const MAX_GLTF_SCAN_BYTES = 25 * 1024 * 1024; // a .gltf scan is JSON that has to be read whole to check it
 const WRITES_PER_MINUTE = 10;                // per IP: posts + uploads + new threads
 
 const app = express();
@@ -110,18 +112,30 @@ function fileFromUpload(file) {
     }
 }
 
-// A room scan for a new thread: a 3D model file (incl. PLY), up to MAX_SCAN_BYTES.
-function scanFromUpload(file) {
+// A room scan for a new thread, saved to a temporary file (up to MAX_SCAN_BYTES).
+// Checked by its first megabyte, without loading the whole file.
+// Returns { path, mime, bytes } or null.
+async function scanFromDisk(file) {
     if (!file) return null;
-    const scan = modelFromUpload(file);
-    if (!scan) {
-        if ((file.originalname || '').toLowerCase().endsWith('.usdz')) throw bad('USDZ scans are not supported: export the scan as GLB instead.');
-        throw bad('Room scans must be GLB, glTF, FBX, OBJ or PLY (from Polycam, Scaniverse...).');
-    }
-    if (!['model/gltf-binary', 'model/gltf+json', 'model/fbx', 'model/obj', 'model/ply'].includes(scan.mime)) {
-        throw bad('Room scans must be GLB, glTF, FBX, OBJ or PLY.');
-    }
-    return scan;
+    const name = (file.originalname || '').toLowerCase();
+    if (name.endsWith('.usdz')) throw bad('USDZ scans are not supported: export the scan as GLB instead.');
+    const fh = await openFile(file.path);
+    const head = Buffer.alloc(Math.min(file.size, 1024 * 1024));
+    try { await fh.read(head, 0, head.length, 0); } finally { await fh.close(); }
+    const starts = (t) => head.length >= t.length && head.toString('latin1', 0, t.length) === t;
+    const text = head.toString('utf8');
+    let mime = null;
+    if (starts('glTF')) mime = 'model/gltf-binary';
+    else if (starts('Kaydara FBX Binary')) mime = 'model/fbx';
+    else if (name.endsWith('.gltf')) {
+        if (file.size > MAX_GLTF_SCAN_BYTES) throw bad('Big .gltf scans are not supported: export the scan as GLB instead.');
+        const check = modelFromUpload({ buffer: await readFile(file.path), originalname: name });     // validates + no separate files
+        mime = check?.mime ?? null;
+    } else if (name.endsWith('.fbx') && /^\s*; FBX/.test(text.slice(0, 200))) mime = 'model/fbx';
+    else if (name.endsWith('.ply') && starts('ply')) mime = 'model/ply';
+    else if (name.endsWith('.obj') && !text.includes('\0') && /^v\s/m.test(text)) mime = 'model/obj';
+    if (!mime) throw bad('Room scans must be GLB, glTF, FBX, OBJ or PLY (from Polycam, Scaniverse...).');
+    return { path: file.path, mime, bytes: file.size };
 }
 
 async function requireThread(threadId) {
@@ -157,7 +171,13 @@ app.use('/api', (req, res, next) => {
 
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_SCAN_BYTES, files: 2, fields: 5, fieldSize: 64 * 1024 },     // images (3 MB) and models (10 MB) are checked themselves
+    limits: { fileSize: MAX_MODEL_BYTES, files: 1, fields: 5, fieldSize: 64 * 1024 },     // images (3 MB) are checked themselves
+});
+// New threads can carry a room scan of up to 300 MB: their files go to temporary
+// files on disk (Render's free server only has 512 MB of memory), deleted afterwards.
+const diskUpload = multer({
+    storage: multer.diskStorage({ destination: os.tmpdir() }),
+    limits: { fileSize: MAX_SCAN_BYTES, files: 2, fields: 5, fieldSize: 64 * 1024 },
 });
 
 // ------------------------------------------------------------------ API
@@ -204,16 +224,44 @@ app.post('/api/post', rateLimit, upload.single('image'), route(async (req, res) 
     res.json(replies);
 }));
 
-const threadUpload = upload.fields([{ name: 'image', maxCount: 1 }, { name: 'scan', maxCount: 1 }]);
+const threadUpload = diskUpload.fields([{ name: 'image', maxCount: 1 }, { name: 'scan', maxCount: 1 }]);
 app.post('/api/create_thread', rateLimit, threadUpload, route(async (req, res) => {
-    const title = cleanText(req.body.thread_title, 'Thread title', { required: true, max: MAX_TITLE });
-    const body = cleanText(req.body.post_content, 'Body');
-    const image = fileFromUpload(req.files?.image?.[0]);    // an image or a 3D model
-    const scan = scanFromUpload(req.files?.scan?.[0]);      // optional: the room itself
-    const thread = await db.createThread(req.visitorId, title, body, image, cleanShape(req.body.shape), scan);
-    if (image || scan) schedulePrune();
-    multiplayer.broadcast({ type: 'thread', thread });
-    res.json(thread);
+    const temp = Object.values(req.files || {}).flat();
+    try {
+        const title = cleanText(req.body.thread_title, 'Thread title', { required: true, max: MAX_TITLE });
+        const body = cleanText(req.body.post_content, 'Body');
+        const imageFile = req.files?.image?.[0];
+        if (imageFile && imageFile.size > MAX_MODEL_BYTES) throw bad(`3D models can be at most ${MAX_MODEL_BYTES / 1024 / 1024} MB, images ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`);
+        if (imageFile) imageFile.buffer = await readFile(imageFile.path);
+        const image = fileFromUpload(imageFile);                     // an image or a 3D model
+        const scan = await scanFromDisk(req.files?.scan?.[0]);      // optional: the room itself
+        // make sure it fits before storing it (deletes the oldest data, big scans first)
+        const needed = (scan?.bytes || 0) + (image?.data.length || 0);
+        if (needed > 5 * 1024 * 1024 && !(await makeRoomFor(needed))) {
+            throw new HttpError(507, 'Not enough storage left for this scan. Try a smaller export.');
+        }
+        const thread = await db.createThread(req.visitorId, title, body, image, cleanShape(req.body.shape), scan);
+        if (image || scan) schedulePrune();
+        multiplayer.broadcast({ type: 'thread', thread });
+        res.json(thread);
+    } finally {
+        for (const f of temp) unlink(f.path).catch(() => {});
+    }
+}));
+
+// Room scans, streamed out piece by piece.
+app.get('/api/scans/:id', route(async (req, res) => {
+    const id = intParam(req.params.id, 'scan id');
+    const scan = await db.getScanInfo(id);
+    if (!scan) throw new HttpError(404, 'Scan not found.');
+    res.set({
+        'Content-Type': scan.mime,
+        'Content-Length': String(scan.bytes),
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'X-Content-Type-Options': 'nosniff',
+    });
+    if (req.method === 'HEAD') return res.end();      // headers only: don't read the whole scan
+    await db.streamScan(id, res);
 }));
 
 app.get('/api/images/:id', route(async (req, res) => {
@@ -261,8 +309,8 @@ const HALL_SLOT = /^hall-\d{1,5}$/;
 // changed it, else the original file), then every corridor frame someone filled.
 app.get('/api/wall-images', route(async (req, res) => {
     const [slots, replaced] = await Promise.all([wallSlots(), db.getWallPictures()]);
-    const hall = Object.keys(replaced).filter((s) => HALL_SLOT.test(s)).map((slot) => ({ slot, url: replaced[slot] }));
-    res.json([...slots.map((slot) => ({ slot, url: replaced[slot] || slot })), ...hall]);
+    const hall = Object.keys(replaced).filter((s) => HALL_SLOT.test(s)).map((slot) => ({ slot, ...replaced[slot] }));
+    res.json([...slots.map((slot) => ({ slot, url: slot, model: false, ...replaced[slot] })), ...hall]);
 }));
 
 app.post('/api/wall-image', rateLimit, upload.single('image'), route(async (req, res) => {
@@ -276,6 +324,21 @@ app.post('/api/wall-image', rateLimit, upload.single('image'), route(async (req,
     res.json({ slot, url });
 }));
 
+// The lobby lever: every frame the visitor's hotel has (sent as "slots", comma-separated)
+// gets a random uploaded image or .obj. Everyone gets the result (with an id, so the
+// visitor who pulled it doesn't apply it twice) and plays the slot-machine animation.
+let shuffleCount = 0;
+app.post('/api/shuffle-pictures', rateLimit, upload.none(), route(async (req, res) => {
+    const assets = await wallSlots();
+    const slots = [...new Set(String(req.body.slots || '').split(',').filter((s) => HALL_SLOT.test(s) || assets.includes(s)))].slice(0, 200);
+    if (!slots.length) throw bad('No picture frames.');
+    const pictures = await db.shuffleWallPictures(slots);
+    if (!pictures) throw bad('Nothing uploaded yet.');
+    const msg = { type: 'shuffle', id: `${Date.now()}-${++shuffleCount}`, pictures };
+    multiplayer.broadcast(msg);
+    res.json(msg);
+}));
+
 app.use('/api', (req, res) => res.status(404).json({ error: 'Unknown API endpoint.' }));
 
 // ------------------------------------------------------------------ static site
@@ -285,6 +348,7 @@ app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
 app.use((err, req, res, next) => {
     if (err instanceof multer.MulterError) {
         err = bad(err.code === 'LIMIT_FILE_SIZE' ? `File is too large (max ${MAX_SCAN_BYTES / 1024 / 1024} MB for room scans, ${MAX_MODEL_BYTES / 1024 / 1024} MB for 3D models, ${MAX_IMAGE_BYTES / 1024 / 1024} MB for images).` : 'Upload failed.');
+        if (req.files) for (const f of Object.values(req.files).flat()) if (f.path) unlink(f.path).catch(() => {});
     }
     const status = err.status || 500;
     if (status >= 500) console.error(err);

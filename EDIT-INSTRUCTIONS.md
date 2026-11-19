@@ -96,16 +96,16 @@ Everything is on the computer screen itself (there's no bar or instructions belo
 
 On the lobby computer, **ROOM SCAN** picks a 3D scan that becomes the new thread's room. Scan a room with a phone app, export it, and upload the file.
 
-- **Formats:** GLB (best: keeps the colours/textures; Polycam "GLB", Scaniverse "GLB"), glTF (single file), FBX, OBJ (no textures here), PLY (mesh or point cloud). Not USDZ: export GLB instead. Max **25 MB**. Choose a reduced/medium quality export if it's bigger.
+- **Formats:** GLB (best: keeps the colours/textures; Polycam "GLB", Scaniverse "GLB"), glTF (single file), FBX, OBJ (no textures here), PLY (mesh or point cloud). Not USDZ: export GLB instead. Max **300 MB** (a `.gltf` scan: 25 MB, since it's checked whole; use GLB for big ones). Big scans take a while to upload and to load, and are heavy for phones: a medium-quality export is friendlier. Scans are streamed in and out of the database in 1 MB pieces (tables `scans` / `scan_chunks`), so even 300 MB never has to fit in the server's 512 MB of memory.
 - **How it's placed:** turned so its long side runs away from the door, scaled (same in all directions) to fill the room's width or height, set on the floor, starting at the door. The room gets deeper if the scan needs it. The part nearest the door is cut away so you can see in.
 - **Everything else works as usual:** reply boards (hung just inside the scan's left wall), floating shapes, the computer, collisions (the normal room's walls, which stay behind the scan and show through its holes). You can walk through scanned furniture.
-- **Storage:** scans are stored in the database like images. When the database gets near its limit, the oldest uploads are deleted automatically (see "Database clean-up" below), so old scans eventually go and those rooms turn back into normal rooms.
+- **Storage:** scans are stored in the database. When it gets near its limit, **big scans (over 25 MB) are deleted first**, then everything else oldest-first (see "Database clean-up" below). Those rooms turn back into normal rooms. Before a scan is stored, enough is deleted for it to fit; if it can't fit at all, the upload is refused.
 
 | What | Where |
 |---|---|
 | Fitting the scan into the room, door cut, board position | `loadRoomScan()`, `SCAN_DOOR_CUT`, `SCAN_BOARD_INSET` in `public/js/room.js` |
 | How scans are drawn (unlit photo colours, both sides) | `loadScan()` in `public/js/models.js` |
-| Accepted files, 25 MB limit | `scanFromUpload()`, `MAX_SCAN_BYTES` in `server/index.js` |
+| Accepted files, 300 MB limit | `scanFromDisk()`, `MAX_SCAN_BYTES` in `server/index.js`; storing/streaming: `insertScan()` / `streamScan()` in `server/db.js` |
 | The ATTACH / ROOM SCAN buttons on the new-thread screen | `ATTACH_THREAD`, `SCAN` at the top of `public/js/terminal.js` and `drawThreadForm()` |
 
 ---
@@ -137,18 +137,33 @@ Not shown in demo mode (`npx serve public`), because there's no server there to 
 
 ---
 
+## The lever (lobby)
+
+On the lobby's back wall, just behind where you spawn. Hovering shows only **E**. Flipping it gives **every picture frame** (the photos and all hallway frames, empty ones too) a random image or `.obj` from everything uploaded to the database. Every frame first spins like a slot-machine reel and the reels stop one after another. Images show as normal pictures. An `.obj` floats in front of a blank card, scaled down to fit, slowly spinning. It's saved, everyone sees it live, and their lever flips too.
+
+| What | Where |
+|---|---|
+| Lever position / swing | `LEVER` at the top of `public/js/hotel.js`, the model in `buildLever()` |
+| Reel timing (spin length, stagger between frames, how many turns) | `SLOTS` at the top of `public/js/hotel.js`; the animation is `startSlots()` / `updateSlots()` |
+| Size / distance / spin of an `.obj` in a frame | `PICTURE_MODEL` at the top of `public/js/hotel.js` |
+| Which uploads it picks from | `shuffleWallPictures()` in `server/db.js` (images and `.obj` files) |
+| Put a frame back to its original | same as above: `DELETE FROM wall_pictures WHERE slot = '...';` |
+
+---
+
 ## Database clean-up (staying under the size limit)
 
 Everything uploaded (images, 3D models, room scans, replaced wall pictures) is stored in the database. `server/prune.js` keeps it under the limit:
 
-- When the database reaches **950 MB**, the **oldest uploads are deleted first**, by upload date only (no preference for big files), until the live data is down to **850 MB**.
+- When the database reaches **950 MB**, data is deleted until the live data is down to **850 MB**: first **room scans over 25 MB** (oldest first), then **every upload oldest-first** by upload date only (no preference for big files).
+- Before a new room scan is stored, the same deleting makes room for it (it must fit under 950 MB). If it can't, the upload is refused with "Not enough storage left".
 - Deleting an upload also removes its image/model reply, a wall frame's replacement (the frame shows its original picture again) and a room scan (the room becomes a normal room). Text replies stay.
 - Only if there are no uploads left and it's still too big are the oldest threads deleted.
 - It checks at startup, every hour, and about a minute after each upload. Each clean-up shows in the Render logs as `[prune] ...`.
 
 | What | Where |
 |---|---|
-| The two numbers | `PRUNE_AT_MB` / `PRUNE_TO_MB` at the top of `server/prune.js`, or set them as environment variables in Render (no code change needed) |
+| The numbers (950 / 850 / big scan = 25 MB) | `PRUNE_AT_MB` / `PRUNE_TO_MB` / `BIG_SCAN_MB` at the top of `server/prune.js`, or set them as environment variables in Render (no code change needed) |
 | What gets deleted with an upload | `deleteUpload()` in `server/prune.js` |
 
 ---

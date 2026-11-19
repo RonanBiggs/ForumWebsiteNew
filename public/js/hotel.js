@@ -15,6 +15,7 @@ import { addBox, addSign, disposeTree } from './materials.js';
 import { Room, ROOM } from './room.js';
 import { Station, buildComputerDesk } from './computer.js';
 import { FONTS, labelTexture } from './textures.js';
+import { loadModel } from './models.js';
 
 const HALF = 2;           // corridor half-width
 const LOBBY = { halfW: 5, depth: 6 };
@@ -24,6 +25,12 @@ const LIGHT_POOL = 6;     // a few real lights that follow the player (cheap)
 // lobby / corridor. Spots are tried in this order; add or move spots here.
 // Anyone can press E at a picture to hang their own image in that frame instead.
 const PICTURE = { H: 1.4, Y: 1.6, FRAME: 0.06 };     // picture height (m), centre height, frame border
+const PICTURE_MODEL = { SIZE: 0.8, OUT: 0.45, SPIN: 0.6 };   // an .obj in a frame: size (m), how far it floats out, spin speed
+
+// THE LEVER: on the lobby's back wall, just behind/right of where you spawn. Flipping it
+// gives every frame a random uploaded image or .obj, with a slot-machine spin in every frame first.
+const LEVER = { x: 1.6, y: 1.2, ANGLE: 0.6 };     // position on the back wall; handle swings +-ANGLE (up / down)
+const SLOTS = { SPIN: 1.4, STAGGER: 0.25, MAX_TOTAL: 4, LOOPS: 6, HOLD: 0.4, TILE: 256 };   // reel timings (s) and tile size (px)
 const LOBBY_SPOTS = [                                // x, z, rotY (which way it faces)
     { x: -LOBBY.halfW, z: 3, rotY: Math.PI / 2 },         // left wall, facing the lobby computer
     { x: 0, z: LOBBY.depth, rotY: Math.PI },              // back wall, middle
@@ -47,8 +54,13 @@ export class Hotel {
         this.dirty = true;
         this.lightSpots = [];
         this._tmp = new THREE.Vector3();
-        this.wallImages = [];                 // [{ slot, url }]: one frame per file in public/assets/
-        this.hallImages = {};                 // { 'hall-3': url }: empty corridor frames someone filled
+        this.wallImages = [];                 // [{ slot, url, model }]: one frame per file in public/assets/
+        this.hallImages = {};                 // { 'hall-3': { url, model } }: empty corridor frames someone filled
+        this.frames = [];                     // every frame on the walls now: { slot, photo, frame } (in hanging order)
+        this.pictureModels = [];              // .obj models floating in frames (they spin)
+        this.leverAngle = LEVER.ANGLE;        // the lever's handle: tilts to +ANGLE or -ANGLE
+        this.leverTarget = LEVER.ANGLE;
+        this.spin = null;                     // slot-machine animation while it runs
         this.pictureTextures = new Map();     // url -> texture (kept when the corridor is rebuilt)
         this.pictureMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 });   // frames
 
@@ -78,8 +90,8 @@ export class Hotel {
             console.warn('No wall pictures:', err.message);
             return [];
         });
-        this.wallImages = pictures.filter((p) => !p.slot.startsWith('hall-'));
-        for (const p of pictures) if (p.slot.startsWith('hall-')) this.hallImages[p.slot] = p.url;
+        this.wallImages = pictures.filter((p) => !p.slot.startsWith('hall-')).map((p) => ({ ...p, model: !!p.model }));
+        for (const p of pictures) if (p.slot.startsWith('hall-')) this.hallImages[p.slot] = { url: p.url, model: !!p.model };
         const threads = await this.api.listThreads();
         threads.forEach((t) => this.addRoom(t, false));
         this.layout();
@@ -115,6 +127,8 @@ export class Hotel {
             this.corridor.removeFromParent();
         }
         const g = (this.corridor = new THREE.Group());
+        this.frames = [];
+        this.pictureModels = [];
         this.root.add(g);
         const m = this.mats;
         const { H, T, SLOT } = ROOM;
@@ -156,9 +170,45 @@ export class Hotel {
         // w/h = size in metres, y = height of its centre, z = position along the wall.
         addSign(g, labelTexture(CONFIG.LOBBY_SIGN_TEXT), { w: 2.6, h: 0.49, x: halfW - 0.01, y: 2.2, z: 3, rotY: -Math.PI / 2 });
 
+        this.buildLever(g);
         this.hangPictures(g, L);
         this.dirty = true;
     }
+
+    // A lever on the lobby's back wall, near the spawn point. Local +z points out of the
+    // wall into the lobby. Its handle (this.leverPivot) swings up/down, animated in update().
+    buildLever(g) {
+        const lever = new THREE.Group();
+        lever.position.set(LEVER.x, LEVER.y, LOBBY.depth);
+        lever.rotation.y = Math.PI;                       // face into the lobby
+        g.add(lever);
+        const dark = this.mats.dark;
+        addBox(lever, { w: 0.26, h: 0.4, d: 0.04, z: 0.02, mat: dark });                        // wall plate
+        addBox(lever, { w: 0.04, h: 0.12, d: 0.1, x: -0.07, z: 0.08, mat: dark });              // the two cheeks
+        addBox(lever, { w: 0.04, h: 0.12, d: 0.1, x: 0.07, z: 0.08, mat: dark });
+        this.leverPivot = new THREE.Group();
+        this.leverPivot.position.z = 0.09;
+        this.leverPivot.rotation.x = this.leverAngle;
+        lever.add(this.leverPivot);
+        addBox(this.leverPivot, { w: 0.035, h: 0.035, d: 0.42, z: 0.21, mat: this.mats.trim });   // handle, sticking out
+        const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 10), new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.4 }));
+        knob.position.z = 0.44;
+        knob.userData.ownsMaterial = true;
+        this.leverPivot.add(knob);
+        // an invisible box around it all: what you aim at to press E
+        const hit = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.6), new THREE.MeshBasicMaterial());
+        hit.position.z = 0.3;
+        hit.visible = false;
+        hit.userData.ownsMaterial = true;
+        hit.userData.interact = { type: 'lever' };
+        lever.add(hit);
+    }
+
+    // Flips the handle to the other side (animated in update()).
+    flipLever() { this.leverTarget = -this.leverTarget; }
+
+    // Every frame's slot, for the server to fill when the lever is pulled.
+    frameSlots() { return this.frames.map((f) => f.slot); }
 
     // Every wall image once: alternating lobby / corridor (the corridor's left
     // wall, across from the doors). If one side is full, the rest go on the other.
@@ -178,24 +228,36 @@ export class Hotel {
         });
         for (const spot of corridor) {
             const slot = `hall-${Math.round(-spot.z / (SLOT / 2))}`;     // by position: hall-1 is 4 m in, hall-2 8 m...
-            this.addPicture(g, { slot, url: this.hallImages[slot] || null }, spot);
+            this.addPicture(g, { slot, url: null, model: false, ...this.hallImages[slot] }, spot);
         }
     }
 
     // Someone hung a new image in a frame (us, or another player live).
-    setWallImage(slot, url) {
-        if (slot.startsWith('hall-')) {
-            if (this.hallImages[slot] === url) return;
-            this.hallImages[slot] = url;
-        } else {
-            const pic = this.wallImages.find((p) => p.slot === slot);
-            if (!pic || pic.url === url) return;
-            pic.url = url;
-        }
-        this.buildCorridor();
+    setWallImage(slot, url, model = false) {
+        if (this.storePicture(slot, url, model)) this.buildCorridor();
     }
 
-    addPicture(parent, { slot, url }, { x, z, rotY }) {
+    // Several at once (the lever): one rebuild.
+    setWallImages(pictures) {
+        let changed = false;
+        for (const p of pictures) changed = this.storePicture(p.slot, p.url, !!p.model) || changed;
+        if (changed) this.buildCorridor();
+    }
+
+    storePicture(slot, url, model) {
+        if (slot.startsWith('hall-')) {
+            if (this.hallImages[slot]?.url === url) return false;
+            this.hallImages[slot] = { url, model };
+            return true;
+        }
+        const pic = this.wallImages.find((p) => p.slot === slot);
+        if (!pic || pic.url === url) return false;
+        pic.url = url;
+        pic.model = model;
+        return true;
+    }
+
+    addPicture(parent, { slot, url, model }, { x, z, rotY }) {
         const pic = new THREE.Group();
         pic.position.set(x, PICTURE.Y, z);
         pic.rotation.y = rotY;
@@ -209,12 +271,24 @@ export class Hotel {
         photo.userData.keepMap = true;          // ...but the texture stays cached for the next one
         pic.add(frame, photo);
         frame.userData.interact = photo.userData.interact = { type: 'picture', slot };   // press E to change it
+        this.frames.push({ slot, photo, frame });
 
-        // empty frame (nobody hung anything here yet): blank card, portrait 3:4
-        if (!url) {
+        // empty frame (nobody hung anything here yet), or one with an .obj: blank card, portrait 3:4
+        if (!url || model) {
             photo.material.color.set(0xf2efe6);
             photo.scale.x = PICTURE.H * 0.75;
             frame.scale.x = PICTURE.H * 0.75 + 2 * f;
+        }
+        if (!url) return;
+        if (model) {
+            // the .obj floats in front of the card, scaled down to fit the frame, slowly spinning
+            const corridor = this.corridor;
+            loadModel(url, PICTURE_MODEL.SIZE).then(({ object }) => {
+                if (this.corridor !== corridor) { disposeTree(object); return; }   // rebuilt meanwhile
+                object.position.z = PICTURE_MODEL.OUT;
+                pic.add(object);
+                this.pictureModels.push(object);
+            }).catch((err) => console.warn('Wall model failed to load', url, err));
             return;
         }
 
@@ -281,9 +355,90 @@ export class Hotel {
         return true;
     }
 
+    // ------------------------------------------------------------------ slot machine (the lever)
+    // Every frame spins like a slot-machine reel, the reels stop one after another, each
+    // on its new picture, then the real pictures (and .obj models) appear.
+    // pictures: [{ slot, url, model }] from the server.
+    startSlots(pictures) {
+        if (this.spin) this.finishSlots();              // a new pull while spinning: land the old one first
+        const bySlot = new Map(pictures.map((p) => [p.slot, p]));
+        // the reel: one tile per different new picture (at least 4, repeated if needed)
+        let tiles = [...new Map(pictures.map((p) => [p.url, p])).values()].slice(0, 16);
+        while (tiles.length < 4) tiles = tiles.concat(tiles.length ? tiles : [{ url: null }]);
+        const N = tiles.length, T = SLOTS.TILE;
+        const canvas = document.createElement('canvas');
+        canvas.width = T;
+        canvas.height = T * N;
+        const g = canvas.getContext('2d');
+        const reel = new THREE.CanvasTexture(canvas);
+        reel.colorSpace = THREE.SRGBColorSpace;
+        tiles.forEach((tile, i) => {
+            g.fillStyle = `hsl(${(i * 67) % 360} 70% 55%)`;
+            g.fillRect(0, i * T, T, T);
+            g.fillStyle = '#ffffff';
+            g.font = `bold ${T * 0.45}px ${FONTS.MONO}`;
+            g.textAlign = 'center';
+            g.textBaseline = 'middle';
+            g.fillText(tile.model ? '3D' : '?', T / 2, i * T + T / 2);
+            if (!tile.url || tile.model) return;
+            const draw = (img) => {                      // cover the tile, keep the image's shape
+                const s = Math.max(T / img.width, T / img.height);
+                g.save();
+                g.beginPath(); g.rect(0, i * T, T, T); g.clip();
+                g.drawImage(img, (T - img.width * s) / 2, i * T + (T - img.height * s) / 2, img.width * s, img.height * s);
+                g.restore();
+                reel.needsUpdate = true;
+            };
+            const loaded = this.pictureTextures.get(tile.url)?.image;   // already on a wall: draw it right away
+            if (loaded?.width) return draw(loaded);
+            const img = new Image();
+            img.onload = () => draw(img);
+            img.src = tile.url;
+        });
+
+        const step = Math.min(SLOTS.STAGGER, (SLOTS.MAX_TOTAL - SLOTS.SPIN) / Math.max(1, this.frames.length));
+        const reels = this.frames.map((fr, i) => {
+            const target = bySlot.get(fr.slot);
+            const k = target ? Math.max(0, tiles.findIndex((t) => t.url === target.url)) : i % N;
+            const map = reel.clone();
+            map.wrapT = THREE.RepeatWrapping;
+            map.repeat.set(1, 1 / N);
+            const old = fr.photo.material;
+            fr.photo.material = new THREE.MeshBasicMaterial({ map, toneMapped: false });
+            old.dispose();
+            fr.photo.scale.x = PICTURE.H * 0.75;
+            fr.frame.scale.x = PICTURE.H * 0.75 + 2 * PICTURE.FRAME;
+            return { map, final: 1 - (k + 1) / N, stopAt: SLOTS.SPIN + i * step, loops: SLOTS.LOOPS + (i % 3) };
+        });
+        this.spin = { t: 0, reels, reel, pictures, end: SLOTS.SPIN + reels.length * step + SLOTS.HOLD };
+    }
+
+    finishSlots() {
+        const { pictures, reel } = this.spin;
+        this.spin = null;
+        this.setWallImages(pictures);                    // rebuilds the frames with the real pictures
+        reel.dispose();
+    }
+
+    updateSlots(dt) {
+        const s = this.spin;
+        s.t += dt;
+        const ease = (x) => 1 - (1 - x) ** 3;
+        for (const r of s.reels) {
+            const p = Math.min(1, s.t / r.stopAt);
+            r.map.offset.y = r.final + r.loops * (1 - ease(p));
+        }
+        if (s.t >= s.end) this.finishSlots();
+    }
+
     // ------------------------------------------------------------------ per frame
     update(dt, playerPos) {
         this.refresh();
+        // lever handle, frame models, slot machine
+        this.leverAngle += (this.leverTarget - this.leverAngle) * Math.min(1, dt * 12);
+        if (this.leverPivot) this.leverPivot.rotation.x = this.leverAngle;
+        for (const m of this.pictureModels) m.rotation.y += dt * PICTURE_MODEL.SPIN;
+        if (this.spin) this.updateSlots(dt);
         for (const room of this.rooms) {
             room.update(dt, playerPos);
             // lazy-load replies when the player gets close to the door

@@ -215,6 +215,33 @@ function interact() {
     if (target.type === 'reply') openReader(target.reply);
     if (target.type === 'image') inspect(target.room, target.cube);
     if (target.type === 'picture') changePicture(target.slot);
+    if (target.type === 'lever') pullLever();
+}
+
+// ---------------------------------------------------------------- the lobby lever
+// Flips it and asks the server for a random uploaded image / .obj in every frame.
+// The result comes back to us AND to everyone else (live), each applied once by its id.
+const shufflesSeen = new Set();
+let pulling = false;
+async function pullLever() {
+    if (pulling) return;
+    pulling = true;
+    hotel.flipLever();
+    try {
+        applyShuffle(await api.shufflePictures(hotel.frameSlots()), true);
+    } catch (err) {
+        toast(err.message);
+        hotel.flipLever();                          // didn't work: flip it back
+    } finally {
+        pulling = false;
+    }
+}
+function applyShuffle(msg, mine = false) {
+    if (shufflesSeen.has(msg.id)) return;
+    shufflesSeen.add(msg.id);
+    if (!mine && !pulling) hotel.flipLever();       // someone else pulled it: ours moves too
+                                                    // (while we're pulling, this is our own one arriving first)
+    hotel.startSlots(msg.pictures);
 }
 
 // ---------------------------------------------------------------- changing a lobby/corridor picture
@@ -437,6 +464,7 @@ function startMultiplayer() {
         onReply: (reply) => { if (hotel.addReply(reply)) requestLayout(); },
         onShot: (origin, dir) => gun.spawn(origin, dir, false),
         onWallImage: (slot, url) => hotel.setWallImage(slot, url),
+        onShuffle: (msg) => applyShuffle(msg),
         onHit: (dir) => {
             // someone shot us: fly! (not while sitting at a computer / looking at a cube)
             if (!tween && ['start', 'playing', 'free', 'overlay'].includes(state)) player.knockback(knockVelocity(dir));

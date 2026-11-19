@@ -44,7 +44,7 @@ function nameSprite(name) {
 }
 
 export class Multiplayer {
-    constructor({ scene, camera, hotel, onThread, onReply, onShot, onHit, onWallImage }) {
+    constructor({ scene, camera, hotel, onThread, onReply, onShot, onHit, onWallImage, onShuffle }) {
         this.scene = scene;
         this.camera = camera;
         this.hotel = hotel;
@@ -53,6 +53,7 @@ export class Multiplayer {
         this.onShot = onShot;          // (origin, dir) in world space: someone else fired
         this.onHit = onHit;            // (dir) in world space: one of their balls hit US
         this.onWallImage = onWallImage;   // (slot, url): someone changed a lobby/corridor picture
+        this.onShuffle = onShuffle;       // ({ id, pictures }): someone pulled the lobby lever
         this.getAir = () => 0;         // our height above the floor (set by main.js)
         this.ws = null;
         this.players = new Map();          // id -> { mesh, pose, ready, label }
@@ -102,6 +103,9 @@ export class Multiplayer {
                 break;
             case 'wallImage':
                 this.onWallImage(msg.slot, msg.url);
+                break;
+            case 'shuffle':
+                this.onShuffle(msg);
                 break;
             case 'name':
                 this.names.set(msg.id, msg.name);
