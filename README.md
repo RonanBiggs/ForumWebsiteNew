@@ -12,6 +12,7 @@ Everything visual is a **placeholder**: grid textures, box furniture, plain UI, 
 - **New thread:** sit at the computer in the lobby and fill in the **title**, an optional **body** and an optional **image**. **ROOM SCAN** uses a 3D scan from a phone app (Polycam, Scaniverse…) as the room itself.
 - **Gun:** click (or F) to shoot a ball. No ammo, no cooldown. A ball that hits another player launches them across the room.
 - **Phones/tablets:** on-screen joystick (left thumb), drag to look (right thumb), a FIRE button, and a USE button that pops up when you can interact with something.
+- **Paint board:** a big shared board on the lobby's back wall. Press E at it to draw (12 colours, pen width, fill bucket); everyone sees it live and it's saved.
 - **The lever:** on the lobby wall. Flip it (E) and every picture frame spins like a slot machine and lands on a random uploaded image or `.obj`, for everyone.
 - **Usernames:** the box on the entrance screen sets your name forever (one per IP), shown above your pill in a pirate font.
 - **Wall pictures:** every image in `public/assets/` hangs once in the lobby or the corridor (across from the doors). Press **E** at one to replace it with your own image, for everyone. Empty frames fill the rest of the corridor as it grows.
@@ -58,6 +59,7 @@ Open two browser windows to see yourself as a pill in the other one.
 | `public/index.html`, `public/style.css` | Page, menus, HUD, touch-control styles |
 | `public/entrance.html` | The entrance (start) screen content, loaded by main.js |
 | `public/js/models.js` | Loads uploaded 3D models (GLB/glTF, OBJ, STL, FBX) for model replies |
+| `public/js/paint.js`, `paintraster.js`, `server/board.js` | The lobby paint board: browser side, shared drawing code, the server's saved copy |
 | `public/js/gun.js` | The gun: balls, hits, the gun model |
 | `public/js/touch.js` | Phone/tablet controls: joystick, drag-to-look, FIRE/USE buttons |
 | `public/js/config.js` | Hotel name, lobby sign text, data mode, speeds, model path |

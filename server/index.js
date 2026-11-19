@@ -14,6 +14,7 @@ import * as db from './db.js';
 import { attachMultiplayer } from './multiplayer.js';
 import { clientIp } from './ip.js';
 import { schedulePrune, startPruning, makeRoomFor } from './prune.js';
+import { loadBoard, boardPng, flushBoard } from './board.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_TEXT = 5000;
@@ -339,6 +340,14 @@ app.post('/api/shuffle-pictures', rateLimit, upload.none(), route(async (req, re
     res.json(msg);
 }));
 
+// The lobby paint board as it is now (PNG). X-Board-Seq: the last stroke it includes;
+// strokes after that arrive live over the WebSocket.
+app.get('/api/board', (req, res) => {
+    const { seq, data } = boardPng();
+    res.set({ 'Content-Type': 'image/png', 'X-Board-Seq': String(seq), 'Cache-Control': 'no-store' });
+    res.send(data);
+});
+
 app.use('/api', (req, res) => res.status(404).json({ error: 'Unknown API endpoint.' }));
 
 // ------------------------------------------------------------------ static site
@@ -361,4 +370,12 @@ const multiplayer = attachMultiplayer(server);
 
 await db.setupSchema();          // creates tables on first run, no-op afterwards
 startPruning();                  // deletes the oldest data when the database gets near its limit (prune.js)
+await loadBoard();               // the lobby paint board (board.js)
+// Render stops the server on every deploy: save the paint board first
+for (const sig of ['SIGTERM', 'SIGINT']) {
+    process.once(sig, async () => {
+        await flushBoard().catch(() => {});
+        process.exit(0);
+    });
+}
 server.listen(PORT, () => console.log(`Hotel running on http://localhost:${PORT}`));

@@ -217,3 +217,29 @@ body:not(.entered) #jester { visibility: hidden; }     /* not on the entrance sc
 body.touch #jester { width: 110px; }
 #jester .tenor-gif-embed { font-size: 0; }            /* hide Tenor's fallback link text if the GIF can't load */
 #jester .tenor-gif-embed a { color: transparent; }
+
+/* ---------------------------------------------------------------- Paint board bar (index.html #paintbar) */
+#paintbar {
+    position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center;
+    max-width: calc(100% - 24px);
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 14px;
+    z-index: 12;
+    touch-action: manipulation;
+}
+#paint-colors { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+#paint-colors button {
+    width: 28px; height: 28px; padding: 0;
+    border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.35);
+}
+#paint-colors button.on { border: 3px solid #fff; transform: scale(1.15); }
+#paint-width { width: 120px; }
+#paintbar > button {
+    width: 36px; height: 36px; padding: 0;
+    border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 1.1rem;
+}
+#paint-fill.on { background: #fff; }

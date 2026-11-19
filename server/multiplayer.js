@@ -4,12 +4,14 @@
 // Client -> server: { type: 'pose', room: <thread_id>|null, x, y, z, ry }   (y = height off the floor when launched)
 //                   { type: 'shot', room, x, y, z, dx, dy, dz }   (fired the gun: everyone else sees the ball)
 //                   { type: 'hit', id, room, dx, dz }              (our ball hit player `id`: they get launched)
+//                   { type: 'paint', op }   (a stroke / fill on the lobby paint board: see paintraster.js)
 //                   { type: 'hb' }   (heartbeat, ignored)
 //   Positions inside/near a room are sent RELATIVE to that room, because rooms
 //   can be in a different order on different screens for a moment.
 // Server -> client: { type: 'welcome', id, players: [{ id, name, room, x, y, z, ry }] }
 //                   { type: 'name', id, name }   (a player's username, shown above their pill)
 //                   { type: 'wallImage', slot, url }   (someone changed a lobby/corridor picture)
+//                   { type: 'paint', seq, by, op }     (to EVERYONE, the painter too: by = their id)
 //                   { type: 'pose', id, room, x, y, z, ry }
 //                   { type: 'shot', id, room, x, y, z, dx, dy, dz }   { type: 'hit', from, room, dx, dz }
 //                   { type: 'leave', id }
@@ -18,6 +20,7 @@
 import { WebSocketServer } from 'ws';
 import { getUsername } from './db.js';
 import { clientIp } from './ip.js';
+import { paint } from './board.js';
 
 const MAX_MSGS_PER_SEC = 60;          // positions (10/s) + gun spam
 
@@ -91,6 +94,9 @@ export function attachMultiplayer(server) {
             } else if (msg?.type === 'shot') {
                 const shot = cleanShot(msg);
                 if (shot) broadcast({ type: 'shot', id: me.id, ...shot }, ws);
+            } else if (msg?.type === 'paint') {
+                const done = paint(msg.op);
+                if (done) broadcast({ type: 'paint', by: me.id, ...done });
             } else if (msg?.type === 'hit') {
                 const hit = cleanHit(msg);
                 const target = hit && msg.id !== me.id && byId.get(msg.id);

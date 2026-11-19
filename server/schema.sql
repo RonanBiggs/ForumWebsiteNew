@@ -80,3 +80,12 @@ CREATE TABLE IF NOT EXISTS scan_chunks (
     PRIMARY KEY (scan_id, n)
 );
 ALTER TABLE threads ADD COLUMN IF NOT EXISTS scan_file_id INTEGER REFERENCES scans (scan_id) ON DELETE SET NULL;
+
+-- The lobby's community paint board: its pixels (RGBA, zlib-compressed) and the number
+-- of the last stroke/fill drawn into it. One row (id = 1). See server/board.js.
+CREATE TABLE IF NOT EXISTS paint_board (
+    id         INTEGER     PRIMARY KEY,
+    pixels     BYTEA       NOT NULL,
+    seq        BIGINT      NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

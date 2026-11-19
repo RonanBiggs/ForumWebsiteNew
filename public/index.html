@@ -56,6 +56,14 @@
     <button id="seat-keyboard" type="button" aria-label="Keyboard">⌨</button>
 </div>
 
+<!-- Shown while painting on the lobby board: colours (filled in by main.js), pen width, bucket, back -->
+<div id="paintbar" class="hidden">
+    <div id="paint-colors"></div>
+    <input id="paint-width" type="range" min="1" max="40" value="6" aria-label="Pen width" />
+    <button id="paint-fill" type="button" aria-label="Fill">🪣</button>
+    <button id="paint-exit" type="button" aria-label="Back">✕</button>
+</div>
+
 <!-- Shown while looking at an image cube -->
 <div id="inspectbar" class="bar hidden">
     <button id="inspect-back" type="button">Back</button>

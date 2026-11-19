@@ -137,13 +137,31 @@ Not shown in demo mode (`npx serve public`), because there's no server there to 
 
 ---
 
-## The lever (lobby)
+## The paint board (lobby)
 
-On the lobby's back wall, just behind where you spawn. Hovering shows only **E**. Flipping it gives **every picture frame** (the photos and all hallway frames, empty ones too) a random image or `.obj` from everything uploaded to the database. Every frame first spins like a slot-machine reel and the reels stop one after another. Images show as normal pictures. An `.obj` floats in front of a blank card, scaled down to fit, slowly spinning. It's saved, everyone sees it live, and their lever flips too.
+A big shared board on the lobby's back wall (the lobby is 12 m deep to make room; you spawn facing the corridor, so it's behind you). Walk up and press **E**: the view moves in front of it and a small bar appears with **12 colours** (white = eraser), a **pen width** slider, the **🪣 fill bucket**, and **✕** (or Esc / E) to step back. Draw with the mouse or a finger. Everyone sees every stroke live.
+
+- The **server keeps the board** (`server/board.js`) and saves it to the database a few seconds after it changes (table `paint_board`, a few KB), and right before Render restarts it. New visitors download it (`GET /api/board`) and then get new strokes live.
+- Browsers and the server use the **same drawing code** (`public/js/paintraster.js`), so everyone has exactly the same pixels.
+- **Wipe the board:** in the Neon SQL editor `DELETE FROM paint_board;`, then restart the server (Render: Manual Deploy → Restart).
 
 | What | Where |
 |---|---|
-| Lever position / swing | `LEVER` at the top of `public/js/hotel.js`, the model in `buildLever()` |
+| Colours, max pen width, board resolution (1024 × 512) | `PALETTE`, `MAX_WIDTH`, `BOARD_W` / `BOARD_H` at the top of `public/js/paintraster.js` (also update `max` on `#paint-width` in `index.html`) |
+| Board size / height on the wall | `PAINT` at the top of `public/js/hotel.js` |
+| Lobby size, where pictures hang in it | `LOBBY` and `LOBBY_SPOTS` at the top of `public/js/hotel.js` |
+| The bar's look | `#paintbar` in `public/style.css`, `<div id="paintbar">` in `public/index.html` |
+| Drawing / sending strokes | `public/js/paint.js`; entering / leaving painting: `startPainting()` / `endPainting()` in `public/js/main.js` |
+
+---
+
+## The lever (lobby)
+
+On the lobby's right wall, just right of where you spawn. Hovering shows only **E**. Flipping it gives **every picture frame** (the photos and all hallway frames, empty ones too) a random image or `.obj` from everything uploaded to the database. Every frame first spins like a slot-machine reel and the reels stop one after another. Images show as normal pictures. An `.obj` floats in front of a blank card, scaled down to fit, slowly spinning. It's saved, everyone sees it live, and their lever flips too.
+
+| What | Where |
+|---|---|
+| Lever position / swing | `LEVER` at the top of `public/js/hotel.js` (position along the right wall), the model in `buildLever()` |
 | Reel timing (spin length, stagger between frames, how many turns) | `SLOTS` at the top of `public/js/hotel.js`; the animation is `startSlots()` / `updateSlots()` |
 | Size / distance / spin of an `.obj` in a frame | `PICTURE_MODEL` at the top of `public/js/hotel.js` |
 | Which uploads it picks from | `shuffleWallPictures()` in `server/db.js` (images and `.obj` files) |

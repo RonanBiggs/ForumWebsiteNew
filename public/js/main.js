@@ -3,6 +3,7 @@
 //                    <-> overlay (reading a reply in full)
 //                    <-> seated  (typing at a computer: reply in a room, new thread in the lobby)
 //                    <-> inspect (looking at an image cube, drag to turn it)
+//                    <-> painting (at the lobby paint board)
 //
 // The start screen's content comes from entrance.html (see loadEntrance below).
 // On touch screens (touch.js) there's no pointer lock: on-screen buttons and drag-to-look instead.
@@ -15,6 +16,8 @@ import { Hotel } from './hotel.js';
 import { Player } from './player.js';
 import { Terminal } from './terminal.js';
 import { Multiplayer } from './net.js';
+import { PaintBoard } from './paint.js';
+import { PALETTE } from './paintraster.js';
 import { Gun, knockVelocity } from './gun.js';
 import { TouchControls, isTouchDevice } from './touch.js';
 
@@ -87,6 +90,8 @@ window.visualViewport?.addEventListener('resize', fitView);
 window.visualViewport?.addEventListener('scroll', fitView);
 
 const hotel = new Hotel(scene, createMaterials(), api);
+const paint = new PaintBoard();
+hotel.paint = paint;                               // the lobby board shows paint.texture
 const player = new Player(camera, renderer.domElement);
 let net = null;     // multiplayer, only when connected to the real server
 const gun = new Gun({ scene, camera, hotel, getNet: () => net });
@@ -229,6 +234,78 @@ function interact() {
     if (target.type === 'image') inspect(target.room, target.cube);
     if (target.type === 'picture') changePicture(target.slot);
     if (target.type === 'lever') pullLever();
+    if (target.type === 'board') startPainting();
+}
+
+// ---------------------------------------------------------------- painting on the lobby board
+const paintbar = $('paintbar');
+const paintColors = PALETTE.map((hex, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.style.background = hex;
+    b.setAttribute('aria-label', hex);
+    b.addEventListener('click', () => { paint.color = i; showPaintTools(); });
+    $('paint-colors').append(b);
+    return b;
+});
+function showPaintTools() {
+    paintColors.forEach((b, i) => b.classList.toggle('on', i === paint.color));
+    $('paint-fill').classList.toggle('on', paint.bucket);
+}
+$('paint-width').addEventListener('input', (e) => { paint.width = Number(e.target.value); });
+$('paint-fill').addEventListener('click', () => { paint.bucket = !paint.bucket; showPaintTools(); });
+$('paint-exit').addEventListener('click', () => endPainting());
+showPaintTools();
+
+function startPainting() {
+    state = 'painting';
+    player.enabled = false;
+    player.land();
+    show(ui.prompt, false);
+    standingPose = { pos: camera.position.clone(), quat: camera.quaternion.clone() };
+    document.exitPointerLock();
+    const { pos, look } = hotel.paintPose(camera);
+    tweenCamera(pos, lookQuat(pos, look), 0.7, () => {
+        show(paintbar);
+        renderer.domElement.style.cursor = 'crosshair';
+    });
+}
+
+function endPainting() {
+    if (state !== 'painting' || tween) return;
+    paint.up();
+    show(paintbar, false);
+    renderer.domElement.style.cursor = '';
+    tweenCamera(standingPose.pos, standingPose.quat, 0.5, () => backToPlaying());
+}
+
+// Where on the board (in its pixels) the pointer is, or null.
+const paintRay = new THREE.Raycaster();
+const paintNdc = new THREE.Vector2();
+function boardPixel(e) {
+    if (!hotel.paintSurface) return null;
+    const rect = renderer.domElement.getBoundingClientRect();
+    paintNdc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    paintRay.setFromCamera(paintNdc, camera);
+    const hit = paintRay.intersectObject(hotel.paintSurface, false)[0];
+    if (!hit?.uv) return null;
+    return [Math.floor(hit.uv.x * paint.canvas.width), Math.floor((1 - hit.uv.y) * paint.canvas.height)];
+}
+renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (state !== 'painting' || tween) return;
+    e.preventDefault();
+    const at = boardPixel(e);
+    if (!at) return;
+    renderer.domElement.setPointerCapture(e.pointerId);
+    paint.down(...at);
+});
+renderer.domElement.addEventListener('pointermove', (e) => {
+    if (state !== 'painting' || !paint.stroke) return;
+    const at = boardPixel(e);
+    if (at) paint.move(...at);
+});
+for (const type of ['pointerup', 'pointercancel']) {
+    renderer.domElement.addEventListener(type, () => { if (state === 'painting') paint.up(); });
 }
 
 // ---------------------------------------------------------------- the lobby lever
@@ -281,11 +358,13 @@ addEventListener('keydown', (e) => {
     if (e.code === 'KeyE' && !e.repeat) {
         if (state === 'playing') interact();
         else if (state === 'inspect') endInspect();
+        else if (state === 'painting') endPainting();
     } else if (e.code === 'KeyF' && state === 'playing') {
         gun.fire();                                 // key repeat on purpose: hold F to spray
     } else if (e.key === 'Escape') {
         if (state === 'overlay') closeOverlay();
         else if (state === 'inspect') endInspect();
+        else if (state === 'painting') endPainting();
         else if (state === 'seated') standUp();     // works even if the typing box lost focus
     } else if (state === 'seated' && !tween && document.activeElement !== terminal.input) {
         terminal.focus();                           // focus moved away (e.g. clicked a button): grab it back
@@ -494,12 +573,16 @@ function startMultiplayer() {
         onShot: (origin, dir) => gun.spawn(origin, dir, false),
         onWallImage: (slot, url) => hotel.setWallImage(slot, url),
         onShuffle: (msg) => applyShuffle(msg),
+        onPaint: (msg) => paint.onRemote(msg),
         onHit: (dir) => {
             // someone shot us: fly! (not while sitting at a computer / looking at a cube)
             if (!tween && ['start', 'playing', 'free', 'overlay'].includes(state)) player.knockback(knockVelocity(dir));
         },
     });
     net.getAir = () => player.air;
+    paint.send = (op) => net.send({ type: 'paint', op });
+    paint.myId = () => net.myId;
+    net.onReconnect = () => paint.load();
     net.connect();
     show($('online'));
     setInterval(() => { $('online').textContent = `${net.online} online`; }, 1000);
@@ -581,6 +664,7 @@ function setDataMode(text) { const el = $('data-mode'); if (el) el.textContent =
 
 try {
     await Promise.all([hotel.load(), loadMyName()]);
+    paint.load();                                  // the lobby board's current picture (in the background)
     ui.enter.disabled = false;
     ui.enter.textContent = ui.enter.dataset.ready || 'Enter';     // text set by data-ready="..." in entrance.html
     if (await api.mode() === 'mock') setDataMode('Demo data (no server connected)');
@@ -592,4 +676,4 @@ try {
 }
 
 // Dev helpers: poke at things from the browser console, e.g. hotelDebug.camera.position
-window.hotelDebug = { THREE, renderer, scene, camera, hotel, player, api, terminal, gun, sitDown, inspect, endInspect, get net() { return net; } };
+window.hotelDebug = { THREE, renderer, scene, camera, hotel, player, api, terminal, gun, paint, sitDown, inspect, endInspect, get net() { return net; } };

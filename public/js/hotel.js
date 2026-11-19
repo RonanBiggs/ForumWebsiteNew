@@ -1,6 +1,7 @@
 // hotel.js - lays out the lobby, the corridor and one Room per thread.
 //
-// LAYOUT: a lobby at z = 0..6, then one straight corridor running toward -z
+// LAYOUT: a lobby at z = 0..12 (the community paint board is on its back wall),
+// then one straight corridor running toward -z
 // with ONE continuous row of rooms on its right-hand side. Rooms are sorted by
 // latest activity (newest thread/reply first), so the most recently active
 // thread is the first door from the lobby. Each room is as deep as its
@@ -18,7 +19,10 @@ import { FONTS, labelTexture } from './textures.js';
 import { loadModel } from './models.js';
 
 const HALF = 2;           // corridor half-width
-const LOBBY = { halfW: 5, depth: 6 };
+const LOBBY = { halfW: 5, depth: 12 };    // you spawn at z = 4.5 facing the corridor; the paint board is behind you
+
+// THE PAINT BOARD: on the lobby's back wall. Size in metres (2:1, like its 1024 x 512 pixels).
+const PAINT = { W: 5, H: 2.5, Y: 1.65, FRAME: 0.08 };
 const LIGHT_POOL = 6;     // a few real lights that follow the player (cheap)
 
 // WALL PICTURES: every image in public/assets/ hangs once on a wall, alternating
@@ -27,19 +31,20 @@ const LIGHT_POOL = 6;     // a few real lights that follow the player (cheap)
 const PICTURE = { H: 1.4, Y: 1.6, FRAME: 0.06 };     // picture height (m), centre height, frame border
 const PICTURE_MODEL = { SIZE: 0.8, OUT: 0.45, SPIN: 0.6 };   // an .obj in a frame: size (m), how far it floats out, spin speed
 
-// THE LEVER: on the lobby's back wall, just behind/right of where you spawn. Flipping it
+// THE LEVER: on the lobby's right wall, just right of where you spawn. Flipping it
 // gives every frame a random uploaded image or .obj, with a slot-machine spin in every frame first.
-const LEVER = { x: 1.6, y: 1.2, ANGLE: 0.6 };     // position on the back wall; handle swings +-ANGLE (up / down)
+const LEVER = { z: 5.4, y: 1.2, ANGLE: 0.6 };     // position along the right wall; handle swings +-ANGLE (up / down)
 const SLOTS = { SPIN: 1.4, STAGGER: 0.25, MAX_TOTAL: 4, LOOPS: 6, HOLD: 0.4, TILE: 256 };   // reel timings (s) and tile size (px)
 const LOBBY_SPOTS = [                                // x, z, rotY (which way it faces)
     { x: -LOBBY.halfW, z: 3, rotY: Math.PI / 2 },         // left wall, facing the lobby computer
-    { x: 0, z: LOBBY.depth, rotY: Math.PI },              // back wall, middle
+    { x: -LOBBY.halfW, z: 8, rotY: Math.PI / 2 },         // left wall, further back
+    { x: LOBBY.halfW, z: 8.5, rotY: -Math.PI / 2 },       // right wall, further back
     { x: -3.6, z: ROOM.T, rotY: 0 },                      // front wall, left of the corridor
     { x: 3.6, z: ROOM.T, rotY: 0 },                       // front wall, right of the corridor
-    { x: -3, z: LOBBY.depth, rotY: Math.PI },             // back wall, left
-    { x: 3, z: LOBBY.depth, rotY: Math.PI },              // back wall, right
-    { x: -LOBBY.halfW, z: 1.2, rotY: Math.PI / 2 },
-    { x: -LOBBY.halfW, z: 4.8, rotY: Math.PI / 2 },
+    { x: -4, z: LOBBY.depth, rotY: Math.PI },             // back wall, left of the paint board
+    { x: 4, z: LOBBY.depth, rotY: Math.PI },              // back wall, right of the paint board
+    { x: -LOBBY.halfW, z: 10.8, rotY: Math.PI / 2 },
+    { x: LOBBY.halfW, z: 10.8, rotY: -Math.PI / 2 },
 ];
 
 export class Hotel {
@@ -160,8 +165,11 @@ export class Hotel {
             const fw = halfW + T - HALF;
             addBox(g, { w: fw, h: H, d: T, x: side * (HALF + fw / 2), y: H / 2, z: T / 2, mat: m.wall, collider: true });
         }
-        addBox(g, { w: 1.2, h: 0.04, d: 1.2, y: H - 0.02, z: 3, mat: m.light });
-        this.lightSpots.push(new THREE.Vector3(0, H - 0.4, 3), new THREE.Vector3(3, H - 0.4, 3));
+        for (const lz of [3, 8.5]) {
+            addBox(g, { w: 1.2, h: 0.04, d: 1.2, y: H - 0.02, z: lz, mat: m.light });
+            this.lightSpots.push(new THREE.Vector3(0, H - 0.4, lz), new THREE.Vector3(3, H - 0.4, lz));
+        }
+        this.lightSpots.push(new THREE.Vector3(0, H - 0.6, depth - 2));     // lights the paint board
 
         // lobby computer against the right wall, facing into the lobby: start a new thread
         buildComputerDesk(g, m, this.lobbyStation, { x: halfW - 0.5, z: 3, rotY: -Math.PI / 2, onChange: () => { this.dirty = true; } });
@@ -171,16 +179,49 @@ export class Hotel {
         addSign(g, labelTexture(CONFIG.LOBBY_SIGN_TEXT), { w: 2.6, h: 0.49, x: halfW - 0.01, y: 2.2, z: 3, rotY: -Math.PI / 2 });
 
         this.buildLever(g);
+        this.buildPaintBoard(g);
         this.hangPictures(g, L);
         this.dirty = true;
     }
 
-    // A lever on the lobby's back wall, near the spawn point. Local +z points out of the
+    // The community paint board on the lobby's back wall. Its picture is the paint module's
+    // texture (paint.js), which survives this being rebuilt.
+    buildPaintBoard(g) {
+        if (!this.paint) return;
+        const board = new THREE.Group();
+        board.position.set(0, PAINT.Y, LOBBY.depth);
+        board.rotation.y = Math.PI;                       // face into the lobby
+        g.add(board);
+        const f = PAINT.FRAME;
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(PAINT.W + 2 * f, PAINT.H + 2 * f, 0.05), this.pictureMat);
+        frame.position.z = 0.025;
+        const surface = new THREE.Mesh(new THREE.PlaneGeometry(PAINT.W, PAINT.H),
+            new THREE.MeshBasicMaterial({ map: this.paint.texture, toneMapped: false }));
+        surface.position.z = 0.051;
+        surface.userData.ownsMaterial = true;
+        surface.userData.keepMap = true;                  // the texture belongs to paint.js
+        board.add(frame, surface);
+        frame.userData.interact = surface.userData.interact = { type: 'board' };
+        this.paintSurface = surface;
+    }
+
+    // Where to stand to paint: in front of the board, far enough back to see all of it.
+    paintPose(camera) {
+        const halfV = THREE.MathUtils.degToRad(camera.fov / 2);
+        const fit = Math.max((PAINT.H / 2) / Math.tan(halfV), (PAINT.W / 2) / (Math.tan(halfV) * camera.aspect));
+        const d = Math.min(fit * 1.12, LOBBY.depth - 1);
+        return {
+            pos: new THREE.Vector3(0, PAINT.Y, LOBBY.depth - d),
+            look: new THREE.Vector3(0, PAINT.Y, LOBBY.depth),
+        };
+    }
+
+    // A lever on the lobby's right wall, near the spawn point. Local +z points out of the
     // wall into the lobby. Its handle (this.leverPivot) swings up/down, animated in update().
     buildLever(g) {
         const lever = new THREE.Group();
-        lever.position.set(LEVER.x, LEVER.y, LOBBY.depth);
-        lever.rotation.y = Math.PI;                       // face into the lobby
+        lever.position.set(LOBBY.halfW, LEVER.y, LEVER.z);
+        lever.rotation.y = -Math.PI / 2;                  // face into the lobby
         g.add(lever);
         const dark = this.mats.dark;
         addBox(lever, { w: 0.26, h: 0.4, d: 0.04, z: 0.02, mat: dark });                        // wall plate
