@@ -46,6 +46,15 @@ const serverApi = {
         body.append('post_content', text);
         return request('reply', { method: 'POST', body });
     },
+    // A room computer's post: text and/or a file (image / 3D model) together. Returns [reply, ...].
+    post(threadId, text, file = null, shape = 'cube') {
+        const body = new FormData();
+        body.append('thread_id', threadId);
+        body.append('post_content', text);
+        if (file) body.append('image', file);
+        body.append('shape', shape);
+        return request('post', { method: 'POST', body });
+    },
     uploadImage(threadId, file, shape = 'cube') {
         const body = new FormData();
         body.append('thread_id', threadId);
@@ -88,6 +97,7 @@ export const api = {
     getReplies: async (...a) => (await backend()).getReplies(...a),
     postReply: async (...a) => (await backend()).postReply(...a),
     uploadImage: async (...a) => (await backend()).uploadImage(...a),
+    post: async (...a) => (await backend()).post(...a),
     createThread: async (...a) => (await backend()).createThread(...a),
     // demo mode has no server to list public/assets/, so no wall pictures there
     listWallImages: async () => ((await backend()) === serverApi ? serverApi.listWallImages() : []),

@@ -4,9 +4,10 @@
 // The front wall (with the door) sits at z = 0..T and faces the corridor.
 // Walking in (facing -z), the LEFT wall is at x = -W/2: every TEXT reply hangs
 // there as a board, in one row, oldest nearest the door. The room gets longer to fit them.
-// IMAGE replies don't get a board: they float as a cube (textured with the image)
-// in front of the board of the reply before them (see replyLayout below).
-// 3D MODEL replies (image = 2) do the same, floating as the model itself.
+// IMAGE replies float as a shape (textured with the image) and 3D MODEL replies
+// (image = 2) as the model itself. Posted together with text, they float in front
+// of that text's board; posted on their own they get a board of their own
+// (see replyLayout below).
 // The desk + computer is against the back wall.
 //
 // Everything visual here is PLACEHOLDER geometry - replace freely.
@@ -34,25 +35,27 @@ export function roomDepth(slots) {
     return Math.max(7.6, FIRST_Z + (slots - 1) * SPACING + PANEL_W / 2 + BACK_SPACE);
 }
 
-// Where each reply goes. A text reply takes the next spot ("slot") on the wall and
-// gets a board. An image reply floats as a cube in front of the most recent spot
-// (cube = 0 is closest to the wall, 1 the next one out...). Only if there's no
-// spot yet (the thread starts with an image) does it start a spot of its own, without a board.
+// Where each reply goes. Every reply takes the next spot ("slot") on the wall with a
+// board, EXCEPT an image / model posted together with a text reply (attached_to):
+// that one floats in front of the text's board instead, with no board of its own.
+// cube = which floating item in front of a board (0 closest to the wall), -1 = none.
 export function replyLayout(replies) {
     const places = [];
-    let slot = -1;
-    let cubes = 0;
+    const slotOf = new Map();                        // post_id -> slot
+    const floating = [];                             // slot -> how many items float in front
     for (const r of replies) {
-        if (Number(r.image) >= 1) {                  // image or 3D model: floats in front
-            if (slot < 0) { slot = 0; cubes = 0; }
-            places.push({ slot, board: false, cube: cubes++ });
+        const isFile = Number(r.image) >= 1;
+        if (isFile && r.attached_to != null && slotOf.has(r.attached_to)) {
+            const slot = slotOf.get(r.attached_to);
+            places.push({ slot, board: false, cube: floating[slot]++ });
         } else {
-            slot++;
-            cubes = 0;
-            places.push({ slot, board: true, cube: -1 });
+            const slot = floating.length;
+            slotOf.set(r.post_id, slot);
+            floating.push(isFile ? 1 : 0);
+            places.push({ slot, board: true, cube: isFile ? 0 : -1 });
         }
     }
-    return { places, slots: slot + 1 };
+    return { places, slots: floating.length };
 }
 
 export class Room {
@@ -173,6 +176,7 @@ export class Room {
         const x = -ROOM.W / 2;
         const z = this.replyZ(place.slot);
 
+        let board = null;
         if (place.board) {
             const frame = addBox(this.group, { w: 0.04, h: PANEL_H + 0.08, d: PANEL_W + 0.08, x: x + 0.02, y: PANEL_Y, z, mat: this.mats.dark });
             const mat = new THREE.MeshBasicMaterial({ map: replyPanelTexture(reply), toneMapped: false });
@@ -182,10 +186,12 @@ export class Room {
             panel.userData.ownsMaterial = true;
             this.group.add(panel);
             panel.userData.interact = frame.userData.interact = { type: 'reply', reply, room: this };
+            board = [panel, frame];
         }
 
+        let item = null;
         if (Number(reply.image) === 2) {
-            this.addModel(reply, place, x, z);
+            item = this.addModel(reply, place, x, z);
         } else if (Number(reply.image) === 1) {
             // Transparent parts of a PNG / WEBP are see-through: alphaTest cuts them out,
             // and drawing both sides shows the inside of the cube through the holes.
@@ -201,7 +207,10 @@ export class Room {
             cube.userData.interact = { type: 'image', reply, room: this, cube };
             this.group.add(cube);
             this.cubes.push(cube);
+            item = cube;
         }
+        // its own board (posted without text): E on the board picks up its shape too
+        if (board && item) board.forEach((m) => { m.userData.interact = { type: 'image', reply, room: this, cube: item }; });
     }
 
     // Where a floating image / model goes. Several after one reply: 4 in a line out
@@ -229,7 +238,11 @@ export class Room {
         holder.add(hitbox, loading);
         this.group.add(holder);
         this.cubes.push(holder);
+        this.loadInto(holder, loading, reply);
+        return holder;
+    }
 
+    loadInto(holder, loading, reply) {
         const build = this.buildId;
         loadModel(reply.post_content, CUBE_SIZE * 1.15).then(({ object, animations }) => {
             if (build !== this.buildId) return;      // room was rebuilt meanwhile (the new build loads its own)

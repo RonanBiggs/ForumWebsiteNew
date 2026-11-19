@@ -56,3 +56,7 @@ CREATE TABLE IF NOT EXISTS wall_pictures (
 -- What an image reply floats in the room as: 'cube', 'pyramid', 'sphere' or 'icosahedron'
 -- (picked on the computer screen when posting). Older replies are cubes.
 ALTER TABLE replies ADD COLUMN IF NOT EXISTS shape VARCHAR(16) NOT NULL DEFAULT 'cube';
+
+-- An image / 3D model posted TOGETHER with a text reply floats in front of that reply's
+-- board: attached_to = that reply's post_id. NULL = posted on its own: it gets its own board.
+ALTER TABLE replies ADD COLUMN IF NOT EXISTS attached_to INTEGER;

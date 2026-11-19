@@ -113,12 +113,10 @@ export function replyPanelTexture(reply) {
     g.fillRect(20, 50, w - 40, 2);
 
     const top = 64;
-    if (Number(reply.image) === 1) {
+    if (Number(reply.image) >= 1) {           // image / 3D model posted on its own: it floats in front of this board
         g.fillStyle = '#555555';
         g.font = `italic 26px ${FONT}`;
-        g.fillText('[image reply]', 24, top + 20);
-        g.font = `22px ${FONT}`;
-        g.fillText('see the cube in front of this', 24, top + 60);
+        g.fillText(Number(reply.image) === 2 ? '[3D model]' : '[image]', 24, top + 20);
     } else {
         g.fillStyle = '#000000';
         g.font = `24px ${FONT}`;

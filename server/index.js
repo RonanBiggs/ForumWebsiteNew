@@ -170,6 +170,18 @@ app.post('/api/upload', rateLimit, upload.single('image'), route(async (req, res
     res.json(reply);
 }));
 
+// Text and/or a file (image or 3D model) in one post. Returns [reply, ...].
+app.post('/api/post', rateLimit, upload.single('image'), route(async (req, res) => {
+    const threadId = intParam(req.body.thread_id, 'thread_id');
+    const text = cleanText(req.body.post_content, 'Reply');
+    const file = fileFromUpload(req.file);
+    if (!text && !file) throw bad('Write something or attach a file.');
+    await requireThread(threadId);
+    const replies = await db.addPost(req.visitorId, threadId, text, file, cleanShape(req.body.shape));
+    for (const reply of replies) multiplayer.broadcast({ type: 'reply', reply });
+    res.json(replies);
+}));
+
 app.post('/api/create_thread', rateLimit, upload.single('image'), route(async (req, res) => {
     const title = cleanText(req.body.thread_title, 'Thread title', { required: true, max: MAX_TITLE });
     const body = cleanText(req.body.post_content, 'Body');

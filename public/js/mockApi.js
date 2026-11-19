@@ -120,7 +120,7 @@ const delay = (ms = 150) => new Promise(r => setTimeout(r, ms));
 const nowSql = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
-function addReply(threadId, content, image, shape = 'cube') {
+function addReply(threadId, content, image, shape = 'cube', attachedTo = null) {
     const thread = db.threads.find(t => t.thread_id === threadId);
     if (!thread) throw new Error('Thread not found');
     const reply = {
@@ -130,6 +130,7 @@ function addReply(threadId, content, image, shape = 'cube') {
         post_thread: threadId,
         image,
         shape,
+        attached_to: attachedTo,
         session_id: posterFor(threadId),
     };
     db.replies.push(reply);
@@ -184,6 +185,17 @@ export const mockApi = {
         return addReply(threadId, text, 0);
     },
 
+    async post(threadId, text, file = null, shape = 'cube') {
+        await delay();
+        text = String(text || '').trim();
+        if (!text && !file) throw new Error('Write something or attach a file.');
+        if (file) checkImage(file);
+        const out = [];
+        if (text) out.push(addReply(threadId, text, 0));
+        if (file) out.push(addReply(threadId, await fileToDataUrl(file), modelType(file) ? 2 : 1, shape, out[0]?.post_id ?? null));
+        return out;
+    },
+
     async uploadImage(threadId, file, shape = 'cube') {
         await delay();
         checkImage(file);
@@ -209,9 +221,9 @@ export const mockApi = {
         posterNumbers[thread.thread_id] = thread.session_id; // creator keeps their number
         db.threads.push(thread);
         save();
-        let count = 0;
-        if (body) { addReply(thread.thread_id, body, 0); count++; }
-        if (imageUrl) { addReply(thread.thread_id, imageUrl, modelType(imageFile) ? 2 : 1, shape); count++; }
+        let count = 0, text = null;
+        if (body) { text = addReply(thread.thread_id, body, 0); count++; }
+        if (imageUrl) { addReply(thread.thread_id, imageUrl, modelType(imageFile) ? 2 : 1, shape, text?.post_id ?? null); count++; }
         return { ...clone(thread), reply_count: count, latest_date: thread.thread_date };
     },
 };

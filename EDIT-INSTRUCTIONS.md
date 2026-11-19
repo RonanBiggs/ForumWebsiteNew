@@ -72,7 +72,8 @@ Everyone on the same Wi-Fi / network usually shares one IP, so they share one na
 Everything is on the computer screen itself (there's no bar or instructions below it):
 - Click **TITLE** or **BODY** to type there (or press Tab). **Enter makes a new line.**
 - **POST** / **CREATE THREAD** (bottom right) sends. **EXIT** (top right) stands you up (so does Esc).
-- **ATTACH IMAGE** (bottom left on reply screens) or the **IMAGE** line (new-thread screen) opens the file picker. You can also **paste an image** (Ctrl+V / Cmd+V).
+- **ATTACH** (bottom left on reply screens) or the **IMAGE** line (new-thread screen) opens the file picker. You can also **paste an image** (Ctrl+V / Cmd+V). On reply screens the file waits (shown in blue above the buttons; click it to remove it) and is sent with the next **POST**.
+- **Where it shows up:** an image / model posted **together with text** floats in front of that text's board. Posted **on its own**, it gets its own board with the shape in front. (Saved as `attached_to` on the reply; the layout is `replyLayout()` in `public/js/room.js`.)
 - Allowed images: PNG, JPG, GIF, WEBP. Transparent parts are see-through on the shape, and **animated GIFs play** on it.
 - **3D models:** GLB, glTF (single-file), OBJ, STL and FBX, up to 10 MB, through the same ATTACH / IMAGE line. Like images, a model floats in front of the message before it, spins, and can be picked up with E. Its own animation plays if it has one. OBJ / STL have no colours here, so they show plain grey.
 - **Shape picker:** the four little drawings (cube, pyramid, sphere, icosahedron) left of the POST / CREATE THREAD button. The image floats in the room as the picked shape. It's saved with the reply (`shape` column of `replies`).
@@ -151,7 +152,7 @@ Turned on automatically on touch screens. Add `?touch=1` to the address to try t
 | How a reply looks on the wall | `replyPanelTexture()` in `public/js/textures.js` |
 | Spacing of replies along the wall, and how fast rooms get longer | constants at the top of `public/js/room.js` (`SPACING`, `FIRST_Z`, `PANEL_Y`, …) and `roomDepth()` |
 | Image cube size / how far it floats from the wall / gap between several cubes | `CUBE_SIZE`, `CUBE_OUT`, `CUBE_STEP` at the top of `public/js/room.js` |
-| Which board an image floats in front of (images get no board of their own) | `replyLayout()` in `public/js/room.js` |
+| Which board an image floats in front of / when it gets its own board | `replyLayout()` in `public/js/room.js` |
 | How the image wraps around the cube | `wrappedCubeGeometry()` at the bottom of `public/js/room.js` |
 | The computer (desk, chair, screen) in rooms and lobby | `buildComputerDesk()` in `public/js/computer.js`. To use your own `.glb` model, see the README |
 | What the computer screens show | `public/js/terminal.js` (`drawReply`, `drawThreadForm`) and the idle screens: `drawScreenIdle()` in `public/js/room.js`, and `lobbyStation` in `public/js/hotel.js` |

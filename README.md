@@ -6,7 +6,7 @@ Everything visual is a **placeholder**: grid textures, box furniture, plain UI, 
 - One continuous row of rooms down a corridor. **The most recently active thread is the first door from the lobby.**
 - The only signs are the thread titles above each room's door (plus "The Dom Forum" above the lobby computer).
 - Every reply hangs on the room's **left wall** in one row, oldest nearest the door. The room gets longer to fit them all.
-- **Image replies** don't get a board: they float as a **cube with the image wrapped around it** in front of the reply before them. Press **E** on it to look at it, then **click and drag** to turn it.
+- **Image replies** float as a **shape with the image wrapped around it**: in front of the text they were posted with, or in front of a board of their own if posted alone. Press **E** on it to look at it, then **click and drag** to turn it.
 - **Reading:** look at a reply and press **E** to read it in full.
 - **Replying:** sit at the computer at the back of a room (**E**) and type on its screen. **Enter** makes a new line; click **POST** on the screen to send. You can attach 3D models (GLB, glTF, OBJ, STL, FBX), or attach/paste images (PNG, JPG, GIF, WEBP) and pick the shape they float as: cube, pyramid, sphere or icosahedron. Transparent parts are see-through and animated GIFs play.
 - **New thread:** sit at the computer in the lobby and fill in the **title**, an optional **body** and an optional **image**.

@@ -9,7 +9,6 @@
 
 import { wrapText, FONTS } from './textures.js';
 import { drawScreenBackground } from './computer.js';
-import { MODEL_EXTENSIONS } from './models.js';
 
 const MONO = FONTS.MONO;
 
@@ -33,6 +32,7 @@ function shapeRects(mode) {
     const y = BUTTON.y + (BUTTON.h - size) / 2;
     return SHAPES.map((shape, i) => ({ shape, x: x0 + i * (size + gap), y, w: size, h: size }));
 }
+const PENDING_Y = 540;                   // reply screen: the attached file's line
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const inRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
@@ -49,6 +49,7 @@ export class Terminal {
         this.blink = true;
         this.form = null;                       // thread mode: { title, body, image, field }
         this.shape = 'cube';                    // picked shape for the next image (kept between posts)
+        this.pending = null;                    // reply mode: file attached to the next POST
 
         input.addEventListener('input', () => this.syncField());
         input.addEventListener('keyup', () => this.draw());          // caret moves
@@ -81,6 +82,7 @@ export class Terminal {
     open(station) {
         this.station = station;
         station.inUse = true;
+        this.pending = null;
         this.status = '';
         this.input.value = '';
         this.form = station.kind === 'thread' ? { title: '', body: '', image: null, field: 'title' } : null;
@@ -146,6 +148,7 @@ export class Terminal {
         if (picked) { this.shape = picked.shape; this.draw(); return true; }
         if (this.mode !== 'thread') {
             if (inRect(x, y, ATTACH)) { this.attach(); return true; }
+            if (this.pending && y >= PENDING_Y - 6 && y < PENDING_Y + 36) { this.pending = null; this.draw(); return true; }   // click it to remove
             return false;
         }
         for (const field of ['title', 'body']) {
@@ -164,21 +167,25 @@ export class Terminal {
             this.status = '';
             this.draw();
         } else {
-            const isModel = MODEL_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext));
-            this.send(() => this.api.uploadImage(this.station.room.id, file, this.shape), isModel ? '3D model posted.' : 'Image posted.')
-                .then((reply) => reply && this.station?.room.addReply(reply));
+            this.pending = file;             // sent with the next POST (with or without text)
+            this.status = '';
+            this.draw();
         }
     }
 
     // ------------------------------------------------------------------ sending
+    // Text and/or the attached file, as one post: a file with text floats in front of
+    // the text's board; a file on its own gets its own board.
     async postReply() {
         const text = this.input.value.trim();
-        if (!text || this.busy) return;
+        const file = this.pending;
+        if ((!text && !file) || this.busy) return;
         const room = this.station.room;
-        const reply = await this.send(() => this.api.postReply(room.id, text), 'Posted. It is on the wall now.');
-        if (reply) {
-            room.addReply(reply);
+        const replies = await this.send(() => this.api.post(room.id, text, file, this.shape), 'Posted.');
+        if (replies) {
+            replies.forEach((r) => room.addReply(r));
             this.input.value = '';
+            this.pending = null;
         }
         this.draw();
     }
@@ -276,8 +283,14 @@ export class Terminal {
         g.fillRect(50, 90, w - 100, 3);
         g.font = `34px ${MONO}`;
         const lines = wrapText(g, '> ' + this.withCursor(this.input.value, true), w - 100);
-        lines.slice(-11).forEach((l, i) => g.fillText(l, 50, 120 + i * 42));
-        // (11 lines end at y ~580, above the status line and the buttons)
+        lines.slice(-10).forEach((l, i) => g.fillText(l, 50, 120 + i * 42));
+        // (10 lines end at y ~530, above the attached file, the status line and the buttons)
+        if (this.pending) {
+            g.font = `28px ${MONO}`;
+            g.fillStyle = '#9fd3ff';
+            g.fillText(`+ ${this.pending.name}`, 50, PENDING_Y);
+            g.fillStyle = '#ffffff';
+        }
     }
 
     drawThreadForm(g, w) {

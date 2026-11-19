@@ -48,7 +48,7 @@ const THREAD_SQL = `
     LEFT JOIN replies r ON r.post_thread = t.thread_id`;
 const THREAD_GROUP = ' GROUP BY t.thread_id';
 
-const REPLY_COLS = `post_id, post_content, ${fmt('post_date')} AS post_date, post_thread, image::int AS image, session_id, shape`;
+const REPLY_COLS = `post_id, post_content, ${fmt('post_date')} AS post_date, post_thread, image::int AS image, session_id, shape, attached_to`;
 
 // Image replies store "images/<id>"; the browser loads them from /api/images/<id>.
 function formatReply(row) {
@@ -86,11 +86,12 @@ async function posterFor(db, visitorId, threadId) {
 }
 
 // kind: 0 text, 1 image, 2 3D model
-async function insertReply(db, threadId, content, kind, poster, shape = 'cube') {
+// attachedTo: post_id of the text reply an image/model was posted together with (or null)
+async function insertReply(db, threadId, content, kind, poster, shape = 'cube', attachedTo = null) {
     const { rows } = await db.query(
-        `INSERT INTO replies (post_content, post_thread, image, session_id, shape) VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO replies (post_content, post_thread, image, session_id, shape, attached_to) VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING ${REPLY_COLS}`,
-        [content, threadId, kind, poster, shape]);
+        [content, threadId, kind, poster, shape, attachedTo]);
     return formatReply(rows[0]);
 }
 
@@ -129,6 +130,18 @@ export function addImageReply(visitorId, threadId, image, shape) {
     });
 }
 
+// A post from a room's computer: text and/or one image / 3D model, posted together
+// (the file then floats in front of the text's board). Returns the new replies.
+export function addPost(visitorId, threadId, text, file, shape) {
+    return transaction(async (db) => {
+        const poster = await posterFor(db, visitorId, threadId);
+        const out = [];
+        if (text) out.push(await insertReply(db, threadId, text, 0, poster));
+        if (file) out.push(await insertReply(db, threadId, await insertImage(db, file), fileKind(file), poster, shape, out[0]?.post_id ?? null));
+        return out;
+    });
+}
+
 // New thread; the optional body and image become its first replies, by the creator.
 export function createThread(visitorId, title, body, image, shape) {
     return transaction(async (db) => {
@@ -137,8 +150,8 @@ export function createThread(visitorId, title, body, image, shape) {
             [title]);
         const { thread_id: threadId, session_id: poster } = rows[0];
         await db.query('INSERT INTO posters (visitor_id, thread_id, poster) VALUES ($1, $2, $3)', [visitorId, threadId, poster]);
-        if (body) await insertReply(db, threadId, body, 0, poster);
-        if (image) await insertReply(db, threadId, await insertImage(db, image), fileKind(image), poster, shape);
+        const text = body ? await insertReply(db, threadId, body, 0, poster) : null;
+        if (image) await insertReply(db, threadId, await insertImage(db, image), fileKind(image), poster, shape, text?.post_id ?? null);
         return getThread(threadId, db);
     });
 }
