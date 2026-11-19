@@ -11,13 +11,20 @@ html, body {
     font-family: system-ui, Arial, sans-serif;
 }
 
-#viewport, #viewport canvas {
-    touch-action: none;          /* phones: dragging turns the camera / cube, not the page */
+/* the 3D view: fills the visible area (main.js fitView() shrinks it above a phone's keyboard) */
+#viewport {
     position: fixed;
+    left: 0; right: 0; top: 0;
+    height: 100%;
+    touch-action: none;          /* phones: dragging turns the camera / cube, not the page */
+}
+#viewport canvas {
+    position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
     display: block;
+    touch-action: none;
 }
 
 .hidden { display: none !important; }
@@ -105,9 +112,31 @@ input[type="text"] {
 .bar button { padding: 4px 10px; }
 
 /* hidden but focusable */
+/* Inside the screen (not far off it, or phones scroll/zoom towards it when it's focused),
+   invisible, and 16px text so iPhones don't zoom in when the keyboard opens. */
 #term-input {
-    position: fixed; left: -9999px; top: 0;
-    width: 10px; height: 10px; opacity: 0;
+    position: fixed; left: 0; top: 0;
+    width: 1px; height: 1px; padding: 0; border: 0;
+    opacity: 0; font-size: 16px;
+    pointer-events: none; resize: none;
+    z-index: -1;
+}
+
+/* Phones at a computer: ✕ (stand up) and ⌨ (keyboard), top right so the keyboard can't cover them */
+#seat-touch {
+    position: fixed;
+    top: calc(12px + env(safe-area-inset-top));
+    right: calc(12px + env(safe-area-inset-right));
+    display: flex; gap: 10px;
+    z-index: 12;
+}
+#seat-touch button {
+    width: 48px; height: 48px; padding: 0;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff; font-size: 1.3rem;
+    touch-action: manipulation;
 }
 
 /* ---------------------------------------------------------------- Touch controls (phones/tablets, js/touch.js) */
@@ -186,3 +215,5 @@ body.touch .bar button { padding: 10px 12px; }
 #jester iframe { pointer-events: none; }
 body:not(.entered) #jester { visibility: hidden; }     /* not on the entrance screen */
 body.touch #jester { width: 110px; }
+#jester .tenor-gif-embed { font-size: 0; }            /* hide Tenor's fallback link text if the GIF can't load */
+#jester .tenor-gif-embed a { color: transparent; }

@@ -187,6 +187,8 @@ Turned on automatically on touch screens. Add `?touch=1` to the address to try t
 
 | What | Where |
 |---|---|
+| ✕ / ⌨ buttons while sitting at a computer (phones only) | `<div id="seat-touch">` in `public/index.html`, `#seat-touch` in `public/style.css` |
+| Keeping the keyboard open / the screen above it | `fitView()` and the seated `pointerdown` / `pointerup` handlers in `public/js/main.js` |
 | Joystick, FIRE / USE buttons: look and position | `public/style.css`, the `Touch controls` section at the bottom |
 | Look sensitivity, joystick size | `LOOK_SPEED`, `STICK_RADIUS` at the top of `public/js/touch.js` |
 

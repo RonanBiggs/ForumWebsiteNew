@@ -67,11 +67,24 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.0));
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 100);
 camera.position.set(0, CONFIG.EYE_HEIGHT, 4.5);   // lobby, facing down the corridor
 
-addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-});
+// The 3D view fills the VISIBLE part of the page: on phones, when the keyboard is open,
+// that's only the part above it, so the whole computer screen stays in view.
+function fitView() {
+    const vv = window.visualViewport;
+    const w = vv ? Math.round(vv.width) : innerWidth;
+    const h = vv ? Math.round(vv.height) : innerHeight;
+    const view = $('viewport');
+    view.style.top = vv ? `${Math.round(vv.offsetTop)}px` : '0';
+    view.style.height = `${h}px`;
+    if (renderer.domElement.width !== Math.round(w * renderer.getPixelRatio()) || renderer.domElement.height !== Math.round(h * renderer.getPixelRatio())) {
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+    }
+}
+addEventListener('resize', fitView);
+window.visualViewport?.addEventListener('resize', fitView);
+window.visualViewport?.addEventListener('scroll', fitView);
 
 const hotel = new Hotel(scene, createMaterials(), api);
 const player = new Player(camera, renderer.domElement);
@@ -287,6 +300,20 @@ renderer.domElement.addEventListener('mousedown', (e) => {
     }
 });
 
+// Phones at a computer: a tap on the screen must NOT take focus away from the typing box
+// (that closes the keyboard), so the touch's default is cancelled and the tap handled here.
+// The keyboard is (re)opened on the finger's release: phones only open it for a real tap.
+renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (state !== 'seated' || e.pointerType === 'mouse') return;
+    e.preventDefault();
+    if (!tween) clickScreen(e);
+});
+renderer.domElement.addEventListener('pointerup', (e) => {
+    if (state === 'seated' && e.pointerType !== 'mouse' && !tween) terminal.focus();
+});
+$('seat-exit').addEventListener('click', () => standUp());
+$('seat-keyboard').addEventListener('click', () => terminal.focus());
+
 // Sitting at a computer: a click on its screen picks a field / presses POST.
 const mouseNdc = new THREE.Vector2();
 const screenRay = new THREE.Raycaster();
@@ -350,6 +377,7 @@ function sitDown(station) {
 
     const { pos, look } = station.seatPose();
     tweenCamera(pos, lookQuat(pos, look), 0.7, () => {
+        show($('seat-touch'), touch);              // phones: ✕ / ⌨ buttons
         try {
             terminal.open(station);
         } catch (err) {
@@ -363,6 +391,7 @@ function sitDown(station) {
 
 function standUp() {
     if (state !== 'seated' || tween) return;        // not seated, or still sitting down / standing up
+    show($('seat-touch'), false);
     terminal.close();
     tweenCamera(standingPose.pos, standingPose.quat, 0.5, () => {
         show(ui.hud);

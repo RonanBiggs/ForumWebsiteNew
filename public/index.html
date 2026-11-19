@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>Dom Forum</title>
     <!-- Pirate font for the usernames above players (js/net.js: NAME_FONT) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -48,6 +48,12 @@
     <div id="room-label" class="hidden"></div>
     <div id="online" class="hidden"></div>
     <div id="toast" class="hidden"></div>
+</div>
+
+<!-- Phones, while sitting at a computer: always-reachable exit + bring-the-keyboard-back buttons -->
+<div id="seat-touch" class="hidden">
+    <button id="seat-exit" type="button" aria-label="Stand up">✕</button>
+    <button id="seat-keyboard" type="button" aria-label="Keyboard">⌨</button>
 </div>
 
 <!-- Shown while looking at an image cube -->
