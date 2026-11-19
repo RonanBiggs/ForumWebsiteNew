@@ -186,6 +186,8 @@ export class Terminal {
             replies.forEach((r) => room.addReply(r));
             this.input.value = '';
             this.pending = null;
+            this.onExit();                   // posted: stand up from the computer
+            return;
         }
         this.draw();
     }
@@ -201,9 +203,11 @@ export class Terminal {
         const thread = await this.send(() => this.api.createThread(title, body, image, this.shape), '');
         if (thread) {
             this.onThreadCreated(thread);
-            this.status = `Created! Room ${thread.thread_id} is the first door down the hall.`;
+            this.status = '';
             this.form = { title: '', body: '', image: null, field: 'title' };
             this.input.value = '';
+            this.onExit();                   // posted: stand up from the computer
+            return;
         }
         this.draw();
     }
