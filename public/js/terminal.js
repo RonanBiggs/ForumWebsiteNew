@@ -17,10 +17,10 @@ const BUTTON = { x: 1024 - 380, y: 768 - 105, w: 330, h: 70 };      // POST / CR
 const ATTACH = { x: 50, y: 768 - 105, w: 330, h: 70 };              // ATTACH IMAGE (reply screens)
 const EXIT = { x: 1024 - 200, y: 28, w: 150, h: 52 };               // EXIT (stand up)
 const SCAN = { x: 1024 - 380, y: 552, w: 330, h: 62 };              // ROOM SCAN (new-thread screen)
+const ATTACH_THREAD = { x: 90, y: 552, w: 330, h: 62 };              // ATTACH (new-thread screen: image / 3D model)
 const AREAS = {
     title: { y0: 100, y1: 205 },
     body: { y0: 205, y1: 500 },
-    image: { y0: 550, y1: 640 },
 };
 
 // Shape picker: what an image floats as in the room. Small 2D drawings, click one to pick it.
@@ -166,7 +166,7 @@ export class Terminal {
                 return true;
             }
         }
-        if (y >= AREAS.image.y0 && y < AREAS.image.y1) { this.attach(); return true; }
+        if (inRect(x, y, ATTACH_THREAD)) { this.attach(); return true; }
         return false;
     }
 
@@ -331,22 +331,21 @@ export class Terminal {
         const bodyLines = wrapText(g, this.withCursor(f.body, f.field === 'body'), w - 140);
         bodyLines.slice(-6).forEach((l, i) => g.fillText(l, 90, 255 + i * 36));      // 6 lines, status below
 
-        label('IMAGE / 3D MODEL (optional)', 560, false);
-        g.fillStyle = '#ffffff';
-        g.font = `28px ${MONO}`;
-        const imageName = f.image && (f.image.name.length > 30 ? f.image.name.slice(0, 29) + '…' : f.image.name);
-        g.fillText(imageName || 'none: click or paste', 90, 600);      // (kept short: ROOM SCAN is to the right)
-
-        // ROOM SCAN: a 3D scan (Polycam, Scaniverse...) that becomes this thread's room
+        // ATTACH: an image / 3D model (or paste one). ROOM SCAN: a 3D scan
+        // (Polycam, Scaniverse...) that becomes this thread's room. Picked file names show underneath.
+        this.drawButton(g, ATTACH_THREAD, f.image ? 'ATTACH ✓' : 'ATTACH', 30);
         this.drawButton(g, SCAN, f.scan ? 'ROOM SCAN ✓' : 'ROOM SCAN', 30);
-        if (f.scan) {
+        const fileName = (file, b, align) => {
+            if (!file) return;
             g.font = `20px ${MONO}`;
             g.fillStyle = '#9fd3ff';
-            g.textAlign = 'right';
-            const name = f.scan.name.length > 28 ? f.scan.name.slice(0, 27) + '…' : f.scan.name;
-            g.fillText(name, SCAN.x + SCAN.w, SCAN.y + SCAN.h + 6);
+            g.textAlign = align;
+            const name = file.name.length > 28 ? file.name.slice(0, 27) + '…' : file.name;
+            g.fillText(name, align === 'left' ? b.x : b.x + b.w, b.y + b.h + 6);
             g.textAlign = 'left';
-        }
+        };
+        fileName(f.image, ATTACH_THREAD, 'left');
+        fileName(f.scan, SCAN, 'right');
     }
 }
 

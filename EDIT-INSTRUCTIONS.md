@@ -72,7 +72,7 @@ Everyone on the same Wi-Fi / network usually shares one IP, so they share one na
 Everything is on the computer screen itself (there's no bar or instructions below it):
 - Click **TITLE** or **BODY** to type there (or press Tab). **Enter makes a new line.**
 - **POST** / **CREATE THREAD** (bottom right) sends, then you stand up automatically (`this.onExit()` in `postReply()` / `createThread()` in `public/js/terminal.js`). **EXIT** (top right) stands you up (so does Esc).
-- **ATTACH** (bottom left on reply screens) or the **IMAGE** line (new-thread screen) opens the file picker. You can also **paste an image** (Ctrl+V / Cmd+V). On reply screens the file waits (shown in blue above the buttons; click it to remove it) and is sent with the next **POST**.
+- **ATTACH** (bottom left on reply screens, next to ROOM SCAN on the new-thread screen) opens the file picker. You can also **paste an image** (Ctrl+V / Cmd+V). On reply screens the file waits (shown in blue above the buttons; click it to remove it) and is sent with the next **POST**.
 - **Where it shows up:** an image / model posted **together with text** floats in front of that text's board. Posted **on its own**, it gets its own board with the shape in front. (Saved as `attached_to` on the reply; the layout is `replyLayout()` in `public/js/room.js`.)
 - Allowed images: PNG, JPG, GIF, WEBP. Transparent parts are see-through on the shape, and **animated GIFs play** on it.
 - **3D models:** GLB, glTF (single-file), OBJ, STL and FBX, up to 10 MB, through the same ATTACH / IMAGE line. Like images, a model floats in front of the message before it, spins, and can be picked up with E. Its own animation plays if it has one. OBJ / STL have no colours here, so they show plain grey.
@@ -106,7 +106,7 @@ On the lobby computer, **ROOM SCAN** picks a 3D scan that becomes the new thread
 | Fitting the scan into the room, door cut, board position | `loadRoomScan()`, `SCAN_DOOR_CUT`, `SCAN_BOARD_INSET` in `public/js/room.js` |
 | How scans are drawn (unlit photo colours, both sides) | `loadScan()` in `public/js/models.js` |
 | Accepted files, 25 MB limit | `scanFromUpload()`, `MAX_SCAN_BYTES` in `server/index.js` |
-| The ROOM SCAN button | `SCAN` at the top of `public/js/terminal.js` and `drawThreadForm()` |
+| The ATTACH / ROOM SCAN buttons on the new-thread screen | `ATTACH_THREAD`, `SCAN` at the top of `public/js/terminal.js` and `drawThreadForm()` |
 
 ---
 
