@@ -10,13 +10,18 @@
 // (see replyLayout below).
 // The desk + computer is against the back wall.
 //
+// ROOM SCANS: a thread can have a 3D scan (Polycam, Scaniverse...) as its room. It's
+// scaled to fill the room (the room gets deeper to fit it), shown as photographed,
+// and its side nearest the corridor is cut away so you can see in through the door.
+// The normal room is still there behind it (walls, collisions) and works as usual.
+//
 // Everything visual here is PLACEHOLDER geometry - replace freely.
 
 import * as THREE from 'three';
 import { addBox, addSign, disposeTree } from './materials.js';
 import { replyPanelTexture, labelTexture, imageTexture, wrapText, PANEL_PX, FONTS } from './textures.js';
 import { Station, buildComputerDesk } from './computer.js';
-import { loadModel } from './models.js';
+import { loadModel, loadScan } from './models.js';
 
 export const ROOM = { W: 7.6, H: 3.2, T: 0.2, DOOR_W: 1.4, DOOR_H: 2.3, SLOT: 8 };
 
@@ -29,6 +34,8 @@ const PANEL_Y = 1.55;
 const CUBE_SIZE = 0.6;
 const CUBE_OUT = 1.4;                     // how far the cube floats out from the wall
 const CUBE_STEP = 0.8;                    // more images after the same reply: each one this much further out
+const SCAN_BOARD_INSET = 0.3;             // scanned rooms: boards hang this far inside the scan's left wall
+const SCAN_DOOR_CUT = 0.25;               // scanned rooms: cut away this much of the scan by the door
 
 // slots = how many spots along the wall are used (see replyLayout)
 export function roomDepth(slots) {
@@ -74,6 +81,13 @@ export class Room {
         this.time = Math.random() * 10;
         this.doorWorld = new THREE.Vector3();
         this.centerWorld = new THREE.Vector3();
+        this.scan = null;                   // the room scan, once loaded (kept between rebuilds)
+        this.scanDepth = 0;                 // how deep the room must be for it
+        this.scanHalfW = ROOM.W / 2;        // half its width once fitted (boards hang inside it)
+        this.scanLoading = false;
+        // clipping plane (world space) that cuts the scan by the door; keeps z < -cut in room space
+        this.scanClipLocal = new THREE.Plane(new THREE.Vector3(0, 0, -1), -(ROOM.T + SCAN_DOOR_CUT));
+        this.scanClip = new THREE.Plane();
 
         // The computer at the back (its screen canvas survives rebuilds).
         this.station = new Station({ kind: 'reply', room: this, drawIdle: (g, w, h) => this.drawScreenIdle(g, w, h) });
@@ -92,20 +106,26 @@ export class Room {
         this.onChange();
     }
 
+    // Deep enough for `slots` replies, and for the scan.
+    neededDepth(slots) { return Math.max(roomDepth(slots), this.scanDepth); }
+
     updateWorldPoints() {
         this.group.updateMatrixWorld(true);
+        this.scanClip.copy(this.scanClipLocal).applyMatrix4(this.group.matrixWorld);
         this.group.localToWorld(this.doorWorld.set(0, 0, ROOM.T / 2));
         this.group.localToWorld(this.centerWorld.set(0, 2.8, -this.depth / 2));
     }
 
     // ------------------------------------------------------------------ build
     build() {
+        if (this.scan) this.group.remove(this.scan);     // kept: loaded once
         disposeTree(this.group);
         this.group.clear();
         this.buildId++;
         this.cubes = [];
 
         this.buildShell();
+        if (this.scan) this.group.add(this.scan);
         this.buildDoor();
         this.buildComputer();
         if (this.replies) {
@@ -173,7 +193,8 @@ export class Room {
 
     // place = { slot, board, cube } from replyLayout()
     addReplyObjects(reply, place) {
-        const x = -ROOM.W / 2;
+        // the wall the boards hang on: inside the scan's left wall in a scanned room
+        const x = this.thread.scan ? -this.scanHalfW + SCAN_BOARD_INSET : -ROOM.W / 2;
         const z = this.replyZ(place.slot);
 
         let board = null;
@@ -263,12 +284,13 @@ export class Room {
     }
 
     async load(api) {
+        if (this.thread.scan && !this.scan && !this.scanLoading) this.loadRoomScan();
         if (this.replies || this.loading) return;
         this.loading = true;
         try {
             this.replies = await api.getReplies(this.id);
             this.thread.reply_count = this.replies.length;
-            this.depth = roomDepth(replyLayout(this.replies).slots);   // exact now (before: a guess from the count)
+            this.depth = this.neededDepth(replyLayout(this.replies).slots);   // exact now (before: a guess from the count)
             this.build();
             this.station.drawIdle();
         } catch (err) {
@@ -278,6 +300,48 @@ export class Room {
         }
     }
 
+    // Loads the room scan and fits it into the room: its longer side runs away from the
+    // door, it's scaled to fill the room's width or height, sits on the floor, and starts
+    // at the front wall. The room gets deeper if the scan needs it.
+    async loadRoomScan() {
+        this.scanLoading = true;
+        let object;
+        try {
+            object = await loadScan(this.thread.scan);
+        } catch (err) {
+            console.warn(`Room scan for room ${this.id} failed to load`, err);
+            return;
+        }
+        const { W, H, T } = ROOM;
+        const turn = new THREE.Group();          // turned so the scan's longer side is the room's depth
+        turn.add(object);
+        let box = new THREE.Box3().setFromObject(object);
+        let size = box.getSize(new THREE.Vector3());
+        if (size.x > size.z) {
+            turn.rotation.y = Math.PI / 2;
+            turn.updateMatrixWorld(true);
+            box = new THREE.Box3().setFromObject(turn);
+            size = box.getSize(new THREE.Vector3());
+        }
+        const scale = Math.min((W - 0.1) / (size.x || 1), (H - 0.05) / (size.y || 1));
+        const fit = new THREE.Group();
+        fit.add(turn);
+        turn.position.set(-(box.min.x + box.max.x) / 2, -box.min.y, -box.max.z);   // centred, on the floor, front at 0
+        fit.scale.setScalar(scale);
+        fit.position.set(0, 0.01, -T);
+
+        fit.traverse((o) => {
+            if (!o.isMesh && !o.isPoints) return;
+            o.geometry.userData.shared = true;   // kept between room rebuilds (not freed by disposeTree)
+            for (const m of [].concat(o.material)) m.clippingPlanes = [this.scanClip];
+        });
+        this.scan = fit;
+        this.scanDepth = T + size.z * scale + 0.3;
+        this.scanHalfW = (size.x * scale) / 2;
+        this.depth = Math.max(this.depth, this.scanDepth);
+        this.build();                            // adds the scan, moves the boards inside it, deepens the room if needed
+    }
+
     // A new reply was posted: hang it on the wall (lengthen the room if needed).
     addReply(reply) {
         if (reply.post_date) this.thread.latest_date = reply.post_date;
@@ -285,7 +349,7 @@ export class Room {
         // Replies not loaded yet (nobody walked near): just count it; it loads with the rest later.
         if (!this.replies) {
             this.thread.reply_count = (this.thread.reply_count || 0) + 1;
-            const needed = roomDepth(this.thread.reply_count);
+            const needed = this.neededDepth(this.thread.reply_count);
             if (needed > this.depth) { this.depth = needed; this.build(); }
             return;
         }
@@ -295,7 +359,7 @@ export class Room {
         this.replies.push(reply);
         this.thread.reply_count = this.replies.length;
         const { places, slots } = replyLayout(this.replies);
-        const needed = roomDepth(slots);
+        const needed = this.neededDepth(slots);
         if (needed > this.depth) {
             this.depth = needed;
             this.build();

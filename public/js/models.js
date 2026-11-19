@@ -1,4 +1,5 @@
-// models.js - loads uploaded 3D models (GLB / glTF, OBJ, STL, FBX) for model replies.
+// models.js - loads uploaded 3D models (GLB / glTF, OBJ, STL, FBX) for model replies,
+// and room scans (the same formats plus PLY) from apps like Polycam and Scaniverse.
 //
 // The server says which format a file is through its Content-Type (model/gltf-binary,
 // model/gltf+json, model/obj, model/stl, model/fbx). Loaders are only downloaded
@@ -44,6 +45,19 @@ async function parse(buffer, type) {
             : plain();
         return { object: new THREE.Mesh(geometry, material), animations: [] };
     }
+    if (type.includes('ply')) {
+        const { PLYLoader } = await import('three/addons/loaders/PLYLoader.js');
+        const geometry = new PLYLoader().parse(buffer);
+        const colors = !!geometry.attributes.color;
+        if (geometry.index) {                    // a mesh
+            if (!geometry.attributes.normal) geometry.computeVertexNormals();
+            const material = colors ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }) : plain();
+            return { object: new THREE.Mesh(geometry, material), animations: [] };
+        }
+        // a point cloud (or a gaussian-splat .ply, shown as its points)
+        const points = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 0.02, vertexColors: colors, color: colors ? 0xffffff : 0xcccccc }));
+        return { object: points, animations: [] };
+    }
     if (type.includes('obj')) {
         const { OBJLoader } = await import('three/addons/loaders/OBJLoader.js');
         const object = new OBJLoader().parse(new TextDecoder().decode(buffer));
@@ -52,6 +66,30 @@ async function parse(buffer, type) {
         return { object, animations: [] };
     }
     throw new Error(`Unknown 3D model type "${type}"`);
+}
+
+// A room scan, as is (real size, not moved). Scans have the light baked into their
+// colours, so they're shown unlit, and from both sides (scanned from inside a room).
+export async function loadScan(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { object } = await parse(await res.arrayBuffer(), res.headers.get('content-type') || '');
+    object.traverse((o) => {
+        if (!o.isMesh) return;
+        const colours = !!o.geometry.attributes.color;
+        o.material = [].concat(o.material).map((m) => {
+            if (!m.map && !colours) {                // no photo colours: keep it shaded so its shape shows
+                m.side = THREE.DoubleSide;
+                return m;
+            }
+            return new THREE.MeshBasicMaterial({
+                map: m.map || null, vertexColors: colours, side: THREE.DoubleSide,
+                transparent: m.transparent, alphaTest: m.alphaTest,
+            });
+        });
+        if (o.material.length === 1) o.material = o.material[0];
+    });
+    return object;
 }
 
 // Loads the model at `url` and fits it into a box `size` metres across, centred on (0,0,0).

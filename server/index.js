@@ -21,6 +21,7 @@ const SHAPES = ['cube', 'pyramid', 'sphere', 'icosahedron'];     // what an imag
 const cleanShape = (value) => (SHAPES.includes(value) ? value : 'cube');
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;     // keep small: Neon's free database is 0.5 GB in total
 const MAX_MODEL_BYTES = 10 * 1024 * 1024;    // 3D models (.glb .gltf .obj .stl .fbx)
+const MAX_SCAN_BYTES = 25 * 1024 * 1024;     // room scans (Polycam, Scaniverse...): .glb .gltf .fbx .obj .ply
 const WRITES_PER_MINUTE = 10;                // per IP: posts + uploads + new threads
 
 const app = express();
@@ -84,6 +85,8 @@ function modelFromUpload(file) {
     else if (name.endsWith('.stl')) {
         const binary = b.length >= 84 && b.length === 84 + 50 * b.readUInt32LE(80);
         if (binary || /^\s*solid/.test(text().slice(0, 100))) mime = 'model/stl';
+    } else if (name.endsWith('.ply') && starts('ply')) {
+        mime = 'model/ply';                         // Polycam / Scaniverse mesh or point cloud
     } else if (name.endsWith('.obj')) {
         const t = text();
         if (!t.includes('\0') && /^v\s/m.test(t) && /^f\s/m.test(t)) mime = 'model/obj';
@@ -95,6 +98,8 @@ function modelFromUpload(file) {
 function fileFromUpload(file) {
     if (!file) return null;
     const model = modelFromUpload(file);
+    if (model?.mime === 'model/ply') throw bad('PLY files can only be used as a room scan.');
+    if (model && model.data.length > MAX_MODEL_BYTES) throw bad(`3D models can be at most ${MAX_MODEL_BYTES / 1024 / 1024} MB.`);
     if (model) return { kind: 'model', ...model };
     try {
         return { kind: 'image', ...imageFromUpload(file) };
@@ -102,6 +107,20 @@ function fileFromUpload(file) {
         if (err.message.startsWith('Only')) throw bad('Only images (PNG, JPG, GIF, WEBP) and 3D models (GLB, glTF, OBJ, STL, FBX) are allowed.');
         throw err;
     }
+}
+
+// A room scan for a new thread: a 3D model file (incl. PLY), up to MAX_SCAN_BYTES.
+function scanFromUpload(file) {
+    if (!file) return null;
+    const scan = modelFromUpload(file);
+    if (!scan) {
+        if ((file.originalname || '').toLowerCase().endsWith('.usdz')) throw bad('USDZ scans are not supported: export the scan as GLB instead.');
+        throw bad('Room scans must be GLB, glTF, FBX, OBJ or PLY (from Polycam, Scaniverse...).');
+    }
+    if (!['model/gltf-binary', 'model/gltf+json', 'model/fbx', 'model/obj', 'model/ply'].includes(scan.mime)) {
+        throw bad('Room scans must be GLB, glTF, FBX, OBJ or PLY.');
+    }
+    return scan;
 }
 
 async function requireThread(threadId) {
@@ -137,7 +156,7 @@ app.use('/api', (req, res, next) => {
 
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_MODEL_BYTES, files: 1, fields: 5, fieldSize: 64 * 1024 },     // images are checked for 3 MB themselves
+    limits: { fileSize: MAX_SCAN_BYTES, files: 2, fields: 5, fieldSize: 64 * 1024 },     // images (3 MB) and models (10 MB) are checked themselves
 });
 
 // ------------------------------------------------------------------ API
@@ -182,11 +201,13 @@ app.post('/api/post', rateLimit, upload.single('image'), route(async (req, res) 
     res.json(replies);
 }));
 
-app.post('/api/create_thread', rateLimit, upload.single('image'), route(async (req, res) => {
+const threadUpload = upload.fields([{ name: 'image', maxCount: 1 }, { name: 'scan', maxCount: 1 }]);
+app.post('/api/create_thread', rateLimit, threadUpload, route(async (req, res) => {
     const title = cleanText(req.body.thread_title, 'Thread title', { required: true, max: MAX_TITLE });
     const body = cleanText(req.body.post_content, 'Body');
-    const image = fileFromUpload(req.file);         // an image or a 3D model
-    const thread = await db.createThread(req.visitorId, title, body, image, cleanShape(req.body.shape));
+    const image = fileFromUpload(req.files?.image?.[0]);    // an image or a 3D model
+    const scan = scanFromUpload(req.files?.scan?.[0]);      // optional: the room itself
+    const thread = await db.createThread(req.visitorId, title, body, image, cleanShape(req.body.shape), scan);
     multiplayer.broadcast({ type: 'thread', thread });
     res.json(thread);
 }));
@@ -258,7 +279,7 @@ app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
 // ------------------------------------------------------------------ errors -> JSON
 app.use((err, req, res, next) => {
     if (err instanceof multer.MulterError) {
-        err = bad(err.code === 'LIMIT_FILE_SIZE' ? `File is too large (max ${MAX_MODEL_BYTES / 1024 / 1024} MB for 3D models, ${MAX_IMAGE_BYTES / 1024 / 1024} MB for images).` : 'Upload failed.');
+        err = bad(err.code === 'LIMIT_FILE_SIZE' ? `File is too large (max ${MAX_SCAN_BYTES / 1024 / 1024} MB for room scans, ${MAX_MODEL_BYTES / 1024 / 1024} MB for 3D models, ${MAX_IMAGE_BYTES / 1024 / 1024} MB for images).` : 'Upload failed.');
     }
     const status = err.status || 500;
     if (status >= 500) console.error(err);

@@ -9,7 +9,7 @@ Everything visual is a **placeholder**: grid textures, box furniture, plain UI, 
 - **Image replies** float as a **shape with the image wrapped around it**: in front of the text they were posted with, or in front of a board of their own if posted alone. Press **E** on it to look at it, then **click and drag** to turn it.
 - **Reading:** look at a reply and press **E** to read it in full.
 - **Replying:** sit at the computer at the back of a room (**E**) and type on its screen. **Enter** makes a new line; click **POST** on the screen to send. You can attach 3D models (GLB, glTF, OBJ, STL, FBX), or attach/paste images (PNG, JPG, GIF, WEBP) and pick the shape they float as: cube, pyramid, sphere or icosahedron. Transparent parts are see-through and animated GIFs play.
-- **New thread:** sit at the computer in the lobby and fill in the **title**, an optional **body** and an optional **image**.
+- **New thread:** sit at the computer in the lobby and fill in the **title**, an optional **body** and an optional **image**. **ROOM SCAN** uses a 3D scan from a phone app (Polycam, Scaniverse…) as the room itself.
 - **Gun:** click (or F) to shoot a ball. No ammo, no cooldown. A ball that hits another player launches them across the room.
 - **Phones/tablets:** on-screen joystick (left thumb), drag to look (right thumb), a FIRE button, and a USE button that pops up when you can interact with something.
 - **Usernames:** the box on the entrance screen sets your name forever (one per IP), shown above your pill in a pirate font.

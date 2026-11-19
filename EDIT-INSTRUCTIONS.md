@@ -92,6 +92,24 @@ Everything is on the computer screen itself (there's no bar or instructions belo
 
 ---
 
+## Room scans (Polycam, Scaniverse…)
+
+On the lobby computer, **ROOM SCAN** picks a 3D scan that becomes the new thread's room. Scan a room with a phone app, export it, and upload the file.
+
+- **Formats:** GLB (best: keeps the colours/textures; Polycam "GLB", Scaniverse "GLB"), glTF (single file), FBX, OBJ (no textures here), PLY (mesh or point cloud). Not USDZ: export GLB instead. Max **25 MB**. Choose a reduced/medium quality export if it's bigger.
+- **How it's placed:** turned so its long side runs away from the door, scaled (same in all directions) to fill the room's width or height, set on the floor, starting at the door. The room gets deeper if the scan needs it. The part nearest the door is cut away so you can see in.
+- **Everything else works as usual:** reply boards (hung just inside the scan's left wall), floating shapes, the computer, collisions (the normal room's walls, which stay behind the scan and show through its holes). You can walk through scanned furniture.
+- **Storage:** scans are stored in the database like images. Neon's free plan is 0.5 GB in total, so that's roughly 20 big scans. For more, the scans would need to move to file storage (e.g. Cloudflare R2).
+
+| What | Where |
+|---|---|
+| Fitting the scan into the room, door cut, board position | `loadRoomScan()`, `SCAN_DOOR_CUT`, `SCAN_BOARD_INSET` in `public/js/room.js` |
+| How scans are drawn (unlit photo colours, both sides) | `loadScan()` in `public/js/models.js` |
+| Accepted files, 25 MB limit | `scanFromUpload()`, `MAX_SCAN_BYTES` in `server/index.js` |
+| The ROOM SCAN button | `SCAN` at the top of `public/js/terminal.js` and `drawThreadForm()` |
+
+---
+
 ## Pictures on the walls (lobby + corridor)
 
 Every image in **`public/assets/`** hangs once on a wall: the first in the lobby, the next in the corridor (on the wall across from the room doors), and so on alternating. The server lists the folder by itself, so to add a picture you just drop it in there and push. They're sorted by file name.

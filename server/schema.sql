@@ -60,3 +60,6 @@ ALTER TABLE replies ADD COLUMN IF NOT EXISTS shape VARCHAR(16) NOT NULL DEFAULT 
 -- An image / 3D model posted TOGETHER with a text reply floats in front of that reply's
 -- board: attached_to = that reply's post_id. NULL = posted on its own: it gets its own board.
 ALTER TABLE replies ADD COLUMN IF NOT EXISTS attached_to INTEGER;
+
+-- A 3D scan (Polycam, Scaniverse...) that IS the thread's room: the file in images.
+ALTER TABLE threads ADD COLUMN IF NOT EXISTS scan_id INTEGER REFERENCES images (image_id);

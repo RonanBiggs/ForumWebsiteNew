@@ -16,6 +16,7 @@ const MONO = FONTS.MONO;
 const BUTTON = { x: 1024 - 380, y: 768 - 105, w: 330, h: 70 };      // POST / CREATE THREAD
 const ATTACH = { x: 50, y: 768 - 105, w: 330, h: 70 };              // ATTACH IMAGE (reply screens)
 const EXIT = { x: 1024 - 200, y: 28, w: 150, h: 52 };               // EXIT (stand up)
+const SCAN = { x: 1024 - 380, y: 552, w: 330, h: 62 };              // ROOM SCAN (new-thread screen)
 const AREAS = {
     title: { y0: 100, y1: 205 },
     body: { y0: 205, y1: 500 },
@@ -37,9 +38,10 @@ const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const inRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
 export class Terminal {
-    constructor({ input, fileInput, api, onExit, onThreadCreated }) {
+    constructor({ input, fileInput, scanInput, api, onExit, onThreadCreated }) {
         this.input = input;
         this.fileInput = fileInput;
+        this.scanInput = scanInput;             // picks a room scan (new-thread screen)
         this.api = api;
         this.onExit = onExit;
         this.onThreadCreated = onThreadCreated;
@@ -68,6 +70,12 @@ export class Terminal {
             const ext = file.type.split('/')[1].replace('jpeg', 'jpg');
             this.attachFile(file.name && file.name !== 'image.png' ? file : new File([file], `pasted.${ext}`, { type: file.type }));
         });
+        scanInput.addEventListener('change', () => {
+            const file = scanInput.files[0];
+            scanInput.value = '';
+            if (file && this.form) { this.form.scan = file; this.status = ''; this.draw(); }
+            this.focus();
+        });
         fileInput.addEventListener('change', () => {
             const file = fileInput.files[0];
             fileInput.value = '';
@@ -85,7 +93,7 @@ export class Terminal {
         this.pending = null;
         this.status = '';
         this.input.value = '';
-        this.form = station.kind === 'thread' ? { title: '', body: '', image: null, field: 'title' } : null;
+        this.form = station.kind === 'thread' ? { title: '', body: '', image: null, scan: null, field: 'title' } : null;
         this.focus();
         this.draw();
     }
@@ -151,6 +159,7 @@ export class Terminal {
             if (this.pending && y >= PENDING_Y - 6 && y < PENDING_Y + 36) { this.pending = null; this.draw(); return true; }   // click it to remove
             return false;
         }
+        if (inRect(x, y, SCAN)) { if (!this.busy) this.scanInput.click(); return true; }
         for (const field of ['title', 'body']) {
             if (y >= AREAS[field].y0 && y < AREAS[field].y1) {
                 if (this.form.field !== field) this.switchField(field);
@@ -193,18 +202,18 @@ export class Terminal {
     }
 
     async createThread() {
-        const { title, body, image } = this.form;
+        const { title, body, image, scan } = this.form;
         if (!title.trim()) {
             this.status = 'ERROR: the thread needs a title';
             this.switchField('title');
             return;
         }
         if (this.busy) return;
-        const thread = await this.send(() => this.api.createThread(title, body, image, this.shape), '');
+        const thread = await this.send(() => this.api.createThread(title, body, image, this.shape, scan), '');
         if (thread) {
             this.onThreadCreated(thread);
             this.status = '';
-            this.form = { title: '', body: '', image: null, field: 'title' };
+            this.form = { title: '', body: '', image: null, scan: null, field: 'title' };
             this.input.value = '';
             this.onExit();                   // posted: stand up from the computer
             return;
@@ -325,7 +334,19 @@ export class Terminal {
         label('IMAGE / 3D MODEL (optional)', 560, false);
         g.fillStyle = '#ffffff';
         g.font = `28px ${MONO}`;
-        g.fillText(f.image ? f.image.name : 'none: click here, or paste one (Ctrl+V)', 90, 600);
+        const imageName = f.image && (f.image.name.length > 30 ? f.image.name.slice(0, 29) + '…' : f.image.name);
+        g.fillText(imageName || 'none: click or paste', 90, 600);      // (kept short: ROOM SCAN is to the right)
+
+        // ROOM SCAN: a 3D scan (Polycam, Scaniverse...) that becomes this thread's room
+        this.drawButton(g, SCAN, f.scan ? 'ROOM SCAN ✓' : 'ROOM SCAN', 30);
+        if (f.scan) {
+            g.font = `20px ${MONO}`;
+            g.fillStyle = '#9fd3ff';
+            g.textAlign = 'right';
+            const name = f.scan.name.length > 28 ? f.scan.name.slice(0, 27) + '…' : f.scan.name;
+            g.fillText(name, SCAN.x + SCAN.w, SCAN.y + SCAN.h + 6);
+            g.textAlign = 'left';
+        }
     }
 }
 

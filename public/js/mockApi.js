@@ -139,7 +139,7 @@ function addReply(threadId, content, image, shape = 'cube', attachedTo = null) {
 }
 
 // Demo-mode 3D models: the type comes from the file name (browsers don't know these types).
-const MODEL_TYPES = { '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.obj': 'model/obj', '.stl': 'model/stl', '.fbx': 'model/fbx' };
+const MODEL_TYPES = { '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.obj': 'model/obj', '.stl': 'model/stl', '.fbx': 'model/fbx', '.ply': 'model/ply' };
 const modelType = (file) => MODEL_TYPES[Object.keys(MODEL_TYPES).find((ext) => file.name.toLowerCase().endsWith(ext))];
 
 function checkImage(file) {
@@ -203,7 +203,7 @@ export const mockApi = {
     },
 
     // Body and image become the thread's first replies, by the thread's creator.
-    async createThread(title, body = '', imageFile = null, shape = 'cube') {
+    async createThread(title, body = '', imageFile = null, shape = 'cube', scanFile = null) {
         await delay();
         title = String(title).trim();
         body = String(body || '').trim();
@@ -217,6 +217,7 @@ export const mockApi = {
             thread_title: title.slice(0, 255),
             thread_date: nowSql(),
             session_id: nextPosterNumber(),
+            scan: scanFile ? await fileToDataUrl(scanFile) : null,
         };
         posterNumbers[thread.thread_id] = thread.session_id; // creator keeps their number
         db.threads.push(thread);

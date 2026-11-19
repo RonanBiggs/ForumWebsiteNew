@@ -56,6 +56,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
+renderer.localClippingEnabled = true;          // room scans are cut away by the door (room.js)
 $('viewport').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -79,6 +80,7 @@ const gun = new Gun({ scene, camera, hotel, getNet: () => net });
 const terminal = new Terminal({
     input: $('term-input'),
     fileInput: $('file-input'),
+    scanInput: $('scan-input'),
     api,
     onExit: standUp,
     onThreadCreated: (thread) => { hotel.addRoom(thread, false); requestLayout(); },

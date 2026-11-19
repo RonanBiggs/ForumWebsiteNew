@@ -64,11 +64,13 @@ const serverApi = {
     },
     // A thread's body/image are stored as its first replies (the forum's threads
     // table only has a title), posted with the creator's poster number.
-    createThread(title, body = '', imageFile = null, shape = 'cube') {
+    // scanFile: optional 3D scan (Polycam, Scaniverse...) that becomes the room
+    createThread(title, body = '', imageFile = null, shape = 'cube', scanFile = null) {
         const form = new FormData();
         form.append('thread_title', title);
         if (body.trim()) form.append('post_content', body);
         if (imageFile) form.append('image', imageFile);
+        if (scanFile) form.append('scan', scanFile);
         form.append('shape', shape);
         return request('create_thread', { method: 'POST', body: form });
     },

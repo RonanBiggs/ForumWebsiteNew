@@ -1,6 +1,7 @@
 // server/db.js - Postgres (Neon) connection + every query the forum needs.
 // Rows come back in the same shape the 3D client already uses:
-//   Thread: { thread_id, thread_title, thread_date, session_id, reply_count, latest_date }
+//   Thread: { thread_id, thread_title, thread_date, session_id, reply_count, latest_date, scan }
+//           (scan = URL of the room's 3D scan, or null)
 //   Reply:  { post_id, post_content, post_date, post_thread, image, session_id, shape }
 //           image: 0 = text, 1 = image, 2 = 3D model (post_content is then the file's URL)
 
@@ -42,6 +43,7 @@ const fmt = (col) => `to_char(${col} AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'
 
 const THREAD_SQL = `
     SELECT t.thread_id, t.thread_title, ${fmt('t.thread_date')} AS thread_date, t.session_id,
+           CASE WHEN t.scan_id IS NULL THEN NULL ELSE 'api/images/' || t.scan_id END AS scan,
            COUNT(r.post_id)::int AS reply_count,
            ${fmt('GREATEST(COALESCE(MAX(r.post_date), t.thread_date), t.thread_date)')} AS latest_date
     FROM threads t
@@ -143,11 +145,13 @@ export function addPost(visitorId, threadId, text, file, shape) {
 }
 
 // New thread; the optional body and image become its first replies, by the creator.
-export function createThread(visitorId, title, body, image, shape) {
+// scan: optional room scan file ({ mime, data }), stored like an image.
+export function createThread(visitorId, title, body, image, shape, scan = null) {
     return transaction(async (db) => {
+        const scanId = scan ? Number((await insertImage(db, scan)).split('/')[1]) : null;
         const { rows } = await db.query(
-            `INSERT INTO threads (thread_title, session_id) VALUES ($1, nextval('poster_seq')) RETURNING thread_id, session_id`,
-            [title]);
+            `INSERT INTO threads (thread_title, session_id, scan_id) VALUES ($1, nextval('poster_seq'), $2) RETURNING thread_id, session_id`,
+            [title, scanId]);
         const { thread_id: threadId, session_id: poster } = rows[0];
         await db.query('INSERT INTO posters (visitor_id, thread_id, poster) VALUES ($1, $2, $3)', [visitorId, threadId, poster]);
         const text = body ? await insertReply(db, threadId, body, 0, poster) : null;
