@@ -14,7 +14,7 @@
 import * as THREE from 'three';
 import { addBox } from './materials.js';
 import { ROOM } from './room.js';
-import { parseModel } from './models.js';
+import { parseModel, limitTextures, PHONE } from './models.js';
 
 export const SHOWROOM = {
     URL: 'models/animation.glb',
@@ -23,7 +23,8 @@ export const SHOWROOM = {
     MODEL_SIZE: 3.2,       // the whole animation (every frame of it) fits in a box this big (m)
     MODEL_Y: 1.6,          // height of the animation's centre
     PEDESTAL: { x: -2.4, z: 2.6, H: 1.0 },   // x across the room, z = distance from the doorway wall
-    LOAD_DISTANCE: 25,     // start downloading the model when the player is this close (m)
+    LOAD_DISTANCE: 5.5,    // start downloading the model when the player is this close to the doorway (m)
+    TEXTURE_MAX: PHONE ? 1024 : 2048,   // its textures are scaled down to this (px): 4096 ones are too much for phones
 };
 const BUTTON_Y = 0.045;    // the button's resting height above the pedestal top
 const BUTTON_PRESS = 0.03; // how far it sinks while the animation plays
@@ -41,6 +42,8 @@ export class Showroom {
         this.playing = false;
         this.loading = false;
         this.center = new THREE.Vector3(0, SHOWROOM.MODEL_Y, z0 + SHOWROOM.DEPTH / 2);
+        this.door = new THREE.Vector3(SHOWROOM.DOOR_X, SHOWROOM.MODEL_Y, z0);
+        this.zStart = z0;
         this.build(halfW, z0);
     }
 
@@ -96,6 +99,7 @@ export class Showroom {
             const res = await fetch(SHOWROOM.URL);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const { object, animations } = await parseModel(await res.arrayBuffer(), 'model/gltf-binary');
+            limitTextures(object, SHOWROOM.TEXTURE_MAX);
             this.mixer = new THREE.AnimationMixer(object);
             this.actions = animations.map((clip) => {
                 const action = this.mixer.clipAction(clip);
@@ -140,7 +144,8 @@ export class Showroom {
     }
 
     update(dt, playerPos) {
-        if (!this.loading && playerPos.distanceTo(this.center) < SHOWROOM.LOAD_DISTANCE) this.load();
+        // loaded once, the first time someone comes near the doorway (or is inside), then kept
+        if (!this.loading && (playerPos.z > this.zStart || playerPos.distanceTo(this.door) < SHOWROOM.LOAD_DISTANCE)) this.load();
         // the button stays pushed in while the animation plays
         const want = this.buttonTop + BUTTON_Y - (this.playing ? BUTTON_PRESS : 0);
         this.button.position.y += (want - this.button.position.y) * Math.min(1, dt * 20);

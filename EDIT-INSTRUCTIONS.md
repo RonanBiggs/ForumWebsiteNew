@@ -244,4 +244,4 @@ The doorway left of the paint board leads to a room with a red button on a pedes
 | The room's walls, the pedestal and button, playback | the rest of `public/js/showroom.js` |
 | The doorway in the lobby's back wall | `buildCorridor()` in `public/js/hotel.js`, below `// back wall, with the doorway` |
 
-This file is part of the website, not an upload, so the 10 MB upload limit doesn't apply. But visitors download it when they get near the room, so keep it reasonably small for phones.
+This file is part of the website, not an upload, so the 10 MB upload limit doesn't apply. It only downloads when a visitor comes near the doorway (`LOAD_DISTANCE`), then stays loaded. Its textures are scaled down to 2048 px (1024 on phones) when it loads, so exporting bigger ones only makes the download slower.

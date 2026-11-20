@@ -55,7 +55,8 @@ document.title = CONFIG.HOTEL_NAME;
 
 // ---------------------------------------------------------------- three.js
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// phones: at most 1.5 screen pixels per CSS pixel (their 3x screens make the GPU draw 4x as much for little gain)
+renderer.setPixelRatio(Math.min(devicePixelRatio, matchMedia('(pointer: coarse)').matches ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;

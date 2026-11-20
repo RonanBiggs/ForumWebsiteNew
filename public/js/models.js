@@ -92,12 +92,42 @@ export async function loadScan(url) {
     return object;
 }
 
+// TEXTURE SIZE LIMIT: models from phone scanning apps often have several 4096 x 4096
+// textures (64 MB of graphics memory each). Small floating models don't need that, and
+// phones run out of memory, so bigger textures are scaled down once, right after loading.
+export const PHONE = matchMedia('(pointer: coarse)').matches;
+const TEXTURE_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap'];
+export function limitTextures(object, max) {
+    const done = new Set();
+    object.traverse((o) => {
+        for (const m of o.material ? [].concat(o.material) : []) {
+            for (const key of TEXTURE_KEYS) {
+                const tex = m[key];
+                if (!tex || done.has(tex)) continue;
+                done.add(tex);
+                const img = tex.image;
+                if (!img?.width || !img?.height || Math.max(img.width, img.height) <= max) continue;
+                const s = max / Math.max(img.width, img.height);
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(img.width * s);
+                canvas.height = Math.round(img.height * s);
+                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                img.close?.();                                  // ImageBitmap: free the full-size copy
+                tex.image = canvas;
+                tex.needsUpdate = true;
+            }
+        }
+    });
+}
+
 // Loads the model at `url` and fits it into a box `size` metres across, centred on (0,0,0).
+// Its textures are capped at 1024 px (it's under a metre across).
 export async function loadModel(url, size) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const type = res.headers.get('content-type') || '';
     const { object, animations } = await parseModel(await res.arrayBuffer(), type);
+    limitTextures(object, 1024);
 
     object.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(object);

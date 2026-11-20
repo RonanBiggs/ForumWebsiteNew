@@ -85,6 +85,9 @@ export class Room {
         this.scanDepth = 0;                 // how deep the room must be for it
         this.scanHalfW = ROOM.W / 2;        // half its width once fitted (boards hang inside it)
         this.scanLoading = false;
+        // 3D model replies only load once the player comes in (they're the big downloads)
+        this.awake = false;
+        this.waiting = [];                  // [holder, loading, reply] for models not loaded yet
         // clipping plane (world space) that cuts the scan by the door; keeps z < -cut in room space
         this.scanClipLocal = new THREE.Plane(new THREE.Vector3(0, 0, -1), -(ROOM.T + SCAN_DOOR_CUT));
         this.scanClip = new THREE.Plane();
@@ -123,6 +126,7 @@ export class Room {
         this.group.clear();
         this.buildId++;
         this.cubes = [];
+        this.waiting = [];
 
         this.buildShell();
         if (this.scan) this.group.add(this.scan);
@@ -259,8 +263,17 @@ export class Room {
         holder.add(hitbox, loading);
         this.group.add(holder);
         this.cubes.push(holder);
-        this.loadInto(holder, loading, reply);
+        if (this.awake) this.loadInto(holder, loading, reply);
+        else this.waiting.push([holder, loading, reply]);
         return holder;
+    }
+
+    // The player came in (or is at the door): load the 3D models. They stay loaded.
+    wake() {
+        if (this.awake) return;
+        this.awake = true;
+        for (const w of this.waiting) this.loadInto(...w);
+        this.waiting = [];
     }
 
     loadInto(holder, loading, reply) {

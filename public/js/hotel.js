@@ -32,6 +32,11 @@ const LIGHT_POOL = 6;     // a few real lights that follow the player (cheap)
 // Anyone can press E at a picture to hang their own image in that frame instead.
 const PICTURE = { H: 1.4, Y: 1.6, FRAME: 0.06 };     // picture height (m), centre height, frame border
 const PICTURE_MODEL = { SIZE: 0.8, OUT: 0.45, SPIN: 0.6 };   // an .obj in a frame: size (m), how far it floats out, spin speed
+// Frames only load their picture / model when the player is this close (m), and pictures
+// are scaled down to PICTURE_MAX px: a full-size phone photo is far more than a 1.4 m frame needs.
+const PICTURE_LOAD_DISTANCE = 12;
+const PICTURE_MAX = 1024;
+const ROOM_WAKE_DISTANCE = 4;     // a room's 3D models load when the player is this close to its door (or inside)
 
 // THE LEVER: on the lobby's right wall, just right of where you spawn. Flipping it
 // gives every frame a random uploaded image or .obj, with a slot-machine spin in every frame first.
@@ -68,6 +73,8 @@ export class Hotel {
         this.leverTarget = LEVER.ANGLE;
         this.spin = null;                     // slot-machine animation while it runs
         this.pictureTextures = new Map();     // url -> texture (kept when the corridor is rebuilt)
+        this.wallModels = new Map();          // url -> Promise<model> (an .obj in a frame, kept when the corridor is rebuilt)
+        this.pendingPictures = [];            // frames waiting for the player to come near: { pos, load }
         this.pictureMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 });   // frames
 
         // the lobby computer, where new threads are started
@@ -136,9 +143,12 @@ export class Hotel {
             disposeTree(this.corridor);
             this.corridor.removeFromParent();
         }
+        // the .obj models in frames are kept between rebuilds: take them out before freeing the rest
+        for (const m of this.pictureModels) m.removeFromParent();
         const g = (this.corridor = new THREE.Group());
         this.frames = [];
         this.pictureModels = [];
+        this.pendingPictures = [];
         this.root.add(g);
         const m = this.mats;
         const { H, T, SLOT } = ROOM;
@@ -199,6 +209,7 @@ export class Hotel {
         this.buildLever(g);
         this.buildPaintBoard(g);
         this.hangPictures(g, L);
+        this.forgetUnusedPictures();
         this.dirty = true;
     }
 
@@ -339,15 +350,17 @@ export class Hotel {
             frame.scale.x = PICTURE.H * 0.75 + 2 * f;
         }
         if (!url) return;
+        const later = (load) => this.pendingPictures.push({ pos: new THREE.Vector3(x, PICTURE.Y, z), load });
         if (model) {
             // the .obj floats in front of the card, scaled down to fit the frame, slowly spinning
             const corridor = this.corridor;
-            loadModel(url, PICTURE_MODEL.SIZE).then(({ object }) => {
-                if (this.corridor !== corridor) { disposeTree(object); return; }   // rebuilt meanwhile
+            later(() => this.wallModel(url).then((model) => {
+                if (this.corridor !== corridor) return;                    // rebuilt meanwhile
+                const object = model.parent ? model.clone() : model;       // the same .obj in two frames: a copy
                 object.position.z = PICTURE_MODEL.OUT;
                 pic.add(object);
                 this.pictureModels.push(object);
-            }).catch((err) => console.warn('Wall model failed to load', url, err));
+            }).catch((err) => console.warn('Wall model failed to load', url, err)));
             return;
         }
 
@@ -359,20 +372,77 @@ export class Hotel {
             photo.material.map = tex;
             photo.material.needsUpdate = true;
         };
-        let tex = this.pictureTextures.get(url);
-        if (!tex) {
-            tex = new THREE.TextureLoader().load(url, () => {
-                tex.userData.ready.forEach((fn) => fn(tex));
-                tex.userData.ready = [];
-            });
-            tex.colorSpace = THREE.SRGBColorSpace;
-            tex.anisotropy = 8;
-            tex.userData.ready = [];
-            this.pictureTextures.set(url, tex);
-        }
         photo.scale.x = frame.scale.x = 0.0001;   // hidden until loaded
-        if (tex.image?.width) fit(tex);
-        else tex.userData.ready.push(fit);
+        const tex = this.pictureTextures.get(url);
+        if (tex?.image?.width) fit(tex);          // already loaded (before a rebuild): show it now
+        else later(() => this.pictureTexture(url).userData.ready.push(fit));
+    }
+
+    // A wall picture as a texture, scaled down to PICTURE_MAX px. Loaded once per url.
+    pictureTexture(url) {
+        let tex = this.pictureTextures.get(url);
+        if (tex) return tex;
+        tex = new THREE.Texture();
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 8;
+        tex.userData.ready = [];
+        this.pictureTextures.set(url, tex);
+        const img = new Image();
+        img.onload = () => {
+            const s = Math.min(1, PICTURE_MAX / Math.max(img.width, img.height));
+            let source = img;
+            if (s < 1) {
+                source = document.createElement('canvas');
+                source.width = Math.round(img.width * s);
+                source.height = Math.round(img.height * s);
+                source.getContext('2d').drawImage(img, 0, 0, source.width, source.height);
+            }
+            tex.image = source;
+            tex.needsUpdate = true;
+            tex.userData.ready.forEach((fn) => fn(tex));
+            tex.userData.ready = [];
+        };
+        img.onerror = () => console.warn('Wall picture failed to load', url);
+        img.src = url;
+        return tex;
+    }
+
+    // An .obj for a frame: downloaded and parsed once, then kept between rebuilds
+    // (the lever and picture changes rebuild every frame; re-parsing big .obj files froze the game).
+    wallModel(url) {
+        let p = this.wallModels.get(url);
+        if (!p) {
+            p = loadModel(url, PICTURE_MODEL.SIZE).then(({ object }) => {
+                object.traverse((o) => {
+                    if (!o.isMesh) return;
+                    o.userData.ownsMaterial = false;      // a corridor rebuild must not free it...
+                    o.geometry.userData.shared = true;    // ...forgetUnusedPictures() does, once it's off the walls
+                });
+                return object;
+            });
+            p.catch(() => this.wallModels.delete(url));
+            this.wallModels.set(url, p);
+        }
+        return p;
+    }
+
+    // After a rebuild: free the pictures / models that no frame shows any more.
+    forgetUnusedPictures() {
+        const used = new Set([...this.wallImages, ...Object.values(this.hallImages)].map((p) => p.url));
+        for (const [url, tex] of this.pictureTextures) {
+            if (used.has(url)) continue;
+            tex.dispose();
+            this.pictureTextures.delete(url);
+        }
+        for (const [url, p] of this.wallModels) {
+            if (used.has(url)) continue;
+            this.wallModels.delete(url);
+            p.then((object) => object.traverse((o) => {
+                if (!o.isMesh) return;
+                o.geometry.dispose();
+                for (const m of [].concat(o.material)) { m.map?.dispose(); m.dispose(); }
+            })).catch(() => {});
+        }
     }
 
     // ------------------------------------------------------------------ queries
@@ -499,10 +569,21 @@ export class Hotel {
         for (const m of this.pictureModels) m.rotation.y += dt * PICTURE_MODEL.SPIN;
         if (this.spin) this.updateSlots(dt);
         this.showroom.update(dt, playerPos);
+        // wall pictures / models: load when the player comes near
+        if (this.pendingPictures.length) {
+            this.pendingPictures = this.pendingPictures.filter((p) => {
+                if (p.pos.distanceTo(playerPos) > PICTURE_LOAD_DISTANCE) return true;
+                p.load();
+                return false;
+            });
+        }
         for (const room of this.rooms) {
             room.update(dt, playerPos);
-            // lazy-load replies when the player gets close to the door
-            if (!room.replies && !room.loading && playerPos.distanceTo(room.doorWorld) < 16) room.load(this.api);
+            // lazy-load replies when the player gets close to the door...
+            const doorDist = playerPos.distanceTo(room.doorWorld);
+            if (!room.replies && !room.loading && doorDist < 16) room.load(this.api);
+            // ...and the 3D models (the big downloads) only when they come in
+            if (!room.awake && (doorDist < ROOM_WAKE_DISTANCE || room.containsPoint(playerPos, this._tmp))) room.wake();
         }
         // move the light pool to the nearest light spots
         const nearest = this._lightCandidates
