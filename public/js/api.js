@@ -14,6 +14,38 @@
 import { CONFIG } from './config.js';
 import { mockApi } from './mockApi.js';
 
+// ---- big photos: shrunk in the browser before uploading ----
+// The server takes images up to 3 MB, and phone camera photos are often bigger, so
+// those are scaled down / re-compressed here first. GIFs are left alone (it would stop
+// them animating), and so is anything that isn't an image (3D models).
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024;     // same as server/index.js
+const SHRINK_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+async function shrinkImage(file) {
+    if (!file || file.size <= MAX_IMAGE_BYTES || !SHRINK_TYPES.includes(file.type)) return file;
+    let bitmap;
+    try { bitmap = await createImageBitmap(file); } catch { return file; }     // can't read it: let the server say why
+    const alpha = file.type !== 'image/jpeg';    // PNG / WEBP may have see-through parts: keep them
+    const canvas = document.createElement('canvas');
+    let scale = Math.min(1, 2560 / Math.max(bitmap.width, bitmap.height));
+    try {
+        for (let tries = 0; tries < 6; tries++, scale *= 0.75) {
+            canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+            canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+            canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+            // with see-through parts: WEBP if the browser can make it (Safari falls back to PNG)
+            const blob = await new Promise((done) => canvas.toBlob(done, alpha ? 'image/webp' : 'image/jpeg', 0.85));
+            if (blob && blob.size <= MAX_IMAGE_BYTES) {
+                const ext = { 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/png': 'png' }[blob.type] || 'jpg';
+                return new File([blob], file.name.replace(/\.[^.]*$/, '') + '.' + ext, { type: blob.type });
+            }
+        }
+    } finally {
+        bitmap.close();
+    }
+    return file;                                 // still too big: the server's error message explains
+}
+
 // ---- real backend: the Node server's /api endpoints (Postgres database) ----
 async function request(path, options = {}) {
     const res = await fetch(CONFIG.API_BASE + path, { credentials: 'same-origin', ...options });
@@ -32,7 +64,8 @@ const serverApi = {
         body.append('slots', slots.join(','));
         return request('shuffle-pictures', { method: 'POST', body });
     },
-    setWallImage(slot, file) {
+    async setWallImage(slot, file) {
+        file = await shrinkImage(file);
         const body = new FormData();
         body.append('slot', slot);
         body.append('image', file);
@@ -53,7 +86,8 @@ const serverApi = {
         return request('reply', { method: 'POST', body });
     },
     // A room computer's post: text and/or a file (image / 3D model) together. Returns [reply, ...].
-    post(threadId, text, file = null, shape = 'cube') {
+    async post(threadId, text, file = null, shape = 'cube') {
+        file = await shrinkImage(file);
         const body = new FormData();
         body.append('thread_id', threadId);
         body.append('post_content', text);
@@ -61,7 +95,8 @@ const serverApi = {
         body.append('shape', shape);
         return request('post', { method: 'POST', body });
     },
-    uploadImage(threadId, file, shape = 'cube') {
+    async uploadImage(threadId, file, shape = 'cube') {
+        file = await shrinkImage(file);
         const body = new FormData();
         body.append('thread_id', threadId);
         body.append('image', file);
@@ -71,7 +106,8 @@ const serverApi = {
     // A thread's body/image are stored as its first replies (the forum's threads
     // table only has a title), posted with the creator's poster number.
     // scanFile: optional 3D scan (Polycam, Scaniverse...) that becomes the room
-    createThread(title, body = '', imageFile = null, shape = 'cube', scanFile = null) {
+    async createThread(title, body = '', imageFile = null, shape = 'cube', scanFile = null) {
+        imageFile = await shrinkImage(imageFile);
         const form = new FormData();
         form.append('thread_title', title);
         if (body.trim()) form.append('post_content', body);

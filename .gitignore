@@ -7,3 +7,6 @@ node_modules/
 
 # original full-size photos (contain GPS location in their metadata). The web copies are in public/assets/
 /Assets/
+
+# 3D models downloaded from the database to work on locally
+/downloaded-models/

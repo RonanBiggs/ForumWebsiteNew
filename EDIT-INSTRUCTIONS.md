@@ -230,3 +230,18 @@ Turned on automatically on touch screens. Add `?touch=1` to the address to try t
 | Walk / run speed, eye height | `public/js/config.js` |
 | Other players (the pill): size, colour, how often positions are sent | top of `public/js/net.js` (`PILL_RADIUS`, `PILL_HEIGHT`, `SEND_EVERY`) and `pillMaterial` in its constructor |
 | Max image size, spam limit | top of `server/index.js` (`MAX_IMAGE_BYTES`, `WRITES_PER_MINUTE`) |
+
+---
+
+## The animation room (behind the lobby)
+
+The doorway left of the paint board leads to a room with a red button on a pedestal and a Blender animation floating in the middle. Pressing E at the button plays the animation once, then it jumps back to its first frame. It only plays for the person who pressed it (not synced to other players).
+
+| What | Where |
+|---|---|
+| **The animation file** | `public/models/animation.glb`. Replace it with a new export from Blender (same name). Every animation clip in the file plays at once, so the Blender export mode doesn't matter |
+| Doorway position, room depth, model size / height, pedestal position | `SHOWROOM` at the top of `public/js/showroom.js` |
+| The room's walls, the pedestal and button, playback | the rest of `public/js/showroom.js` |
+| The doorway in the lobby's back wall | `buildCorridor()` in `public/js/hotel.js`, below `// back wall, with the doorway` |
+
+This file is part of the website, not an upload, so the 10 MB upload limit doesn't apply. But visitors download it when they get near the room, so keep it reasonably small for phones.

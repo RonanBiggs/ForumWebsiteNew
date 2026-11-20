@@ -26,7 +26,7 @@ async function gltfLoader() {
 }
 
 // -> { object: THREE.Object3D, animations: AnimationClip[] }
-async function parse(buffer, type) {
+export async function parseModel(buffer, type) {
     if (type.includes('gltf')) {
         const loader = await gltfLoader();
         const gltf = await loader.parseAsync(buffer, '');
@@ -73,7 +73,7 @@ async function parse(buffer, type) {
 export async function loadScan(url) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const { object } = await parse(await res.arrayBuffer(), res.headers.get('content-type') || '');
+    const { object } = await parseModel(await res.arrayBuffer(), res.headers.get('content-type') || '');
     object.traverse((o) => {
         if (!o.isMesh) return;
         const colours = !!o.geometry.attributes.color;
@@ -97,7 +97,7 @@ export async function loadModel(url, size) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const type = res.headers.get('content-type') || '';
-    const { object, animations } = await parse(await res.arrayBuffer(), type);
+    const { object, animations } = await parseModel(await res.arrayBuffer(), type);
 
     object.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(object);

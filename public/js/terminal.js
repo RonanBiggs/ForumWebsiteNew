@@ -147,7 +147,8 @@ export class Terminal {
         }
     }
 
-    // A click on the screen at canvas pixel (x, y). Returns true if it hit something.
+    // A click on the screen at canvas pixel (x, y). Returns true if it hit something,
+    // 'picker' if that opened the file picker.
     clickAt(x, y) {
         if (!this.station) return false;
         if (inRect(x, y, EXIT)) { this.onExit(); return true; }
@@ -155,18 +156,18 @@ export class Terminal {
         const picked = shapeRects(this.mode).find((r) => inRect(x, y, r));
         if (picked) { this.shape = picked.shape; this.draw(); return true; }
         if (this.mode !== 'thread') {
-            if (inRect(x, y, ATTACH)) { this.attach(); return true; }
+            if (inRect(x, y, ATTACH)) { this.attach(); return 'picker'; }
             if (this.pending && y >= PENDING_Y - 6 && y < PENDING_Y + 36) { this.pending = null; this.draw(); return true; }   // click it to remove
             return false;
         }
-        if (inRect(x, y, SCAN)) { if (!this.busy) this.scanInput.click(); return true; }
+        if (inRect(x, y, SCAN)) { if (!this.busy) this.scanInput.click(); return 'picker'; }
         for (const field of ['title', 'body']) {
             if (y >= AREAS[field].y0 && y < AREAS[field].y1) {
                 if (this.form.field !== field) this.switchField(field);
                 return true;
             }
         }
-        if (inRect(x, y, ATTACH_THREAD)) { this.attach(); return true; }
+        if (inRect(x, y, ATTACH_THREAD)) { this.attach(); return 'picker'; }
         return false;
     }
 

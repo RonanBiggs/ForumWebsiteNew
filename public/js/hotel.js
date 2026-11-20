@@ -17,9 +17,11 @@ import { Room, ROOM } from './room.js';
 import { Station, buildComputerDesk } from './computer.js';
 import { FONTS, labelTexture } from './textures.js';
 import { loadModel } from './models.js';
+import { Showroom, SHOWROOM } from './showroom.js';
 
 const HALF = 2;           // corridor half-width
 const LOBBY = { halfW: 5, depth: 12 };    // you spawn at z = 4.5 facing the corridor; the paint board is behind you
+// THE ANIMATION ROOM is behind the lobby's back wall, through a doorway left of the paint board: see showroom.js
 
 // THE PAINT BOARD: on the lobby's back wall. Size in metres (2:1, like its 1024 x 512 pixels).
 const PAINT = { W: 5, H: 2.5, Y: 1.65, FRAME: 0.08 };
@@ -41,7 +43,6 @@ const LOBBY_SPOTS = [                                // x, z, rotY (which way it
     { x: LOBBY.halfW, z: 8.5, rotY: -Math.PI / 2 },       // right wall, further back
     { x: -3.6, z: ROOM.T, rotY: 0 },                      // front wall, left of the corridor
     { x: 3.6, z: ROOM.T, rotY: 0 },                       // front wall, right of the corridor
-    { x: -4, z: LOBBY.depth, rotY: Math.PI },             // back wall, left of the paint board
     { x: 4, z: LOBBY.depth, rotY: Math.PI },              // back wall, right of the paint board
     { x: -LOBBY.halfW, z: 10.8, rotY: Math.PI / 2 },
     { x: LOBBY.halfW, z: 10.8, rotY: -Math.PI / 2 },
@@ -81,6 +82,10 @@ export class Hotel {
                 g.fillText('[E] sit down to start', 60, h - 130);
             },
         });
+
+        // the animation room behind the lobby's back wall (built once, never rebuilt)
+        this.showroom = new Showroom(mats, { halfW: LOBBY.halfW, z0: LOBBY.depth + ROOM.T });
+        this.root.add(this.showroom.group);
 
         this.lights = [];
         for (let i = 0; i < LIGHT_POOL; i++) {
@@ -159,7 +164,19 @@ export class Hotel {
         const { halfW, depth } = LOBBY;
         addBox(g, { w: halfW * 2, h: 0.1, d: depth, y: -0.05, z: depth / 2, mat: m.floor });
         addBox(g, { w: halfW * 2, h: 0.1, d: depth, y: H + 0.05, z: depth / 2, mat: m.ceiling });
-        addBox(g, { w: halfW * 2 + 2 * T, h: H, d: T, y: H / 2, z: depth + T / 2, mat: m.wall, collider: true });
+        // back wall, with the doorway into the animation room (showroom.js) left of the paint board
+        {
+            const { DOOR_W, DOOR_H } = ROOM;
+            const zb = depth + T / 2, dx = SHOWROOM.DOOR_X;
+            const left = -(halfW + T), right = halfW + T, a = dx - DOOR_W / 2, b = dx + DOOR_W / 2;
+            addBox(g, { w: a - left, h: H, d: T, x: (left + a) / 2, y: H / 2, z: zb, mat: m.wall, collider: true });
+            addBox(g, { w: right - b, h: H, d: T, x: (b + right) / 2, y: H / 2, z: zb, mat: m.wall, collider: true });
+            addBox(g, { w: DOOR_W, h: H - DOOR_H, d: T, x: dx, y: DOOR_H + (H - DOOR_H) / 2, z: zb, mat: m.wall });
+            for (const s of [-1, 1]) {                    // door frame, like the thread rooms'
+                addBox(g, { w: 0.08, h: DOOR_H, d: T + 0.06, x: dx + s * (DOOR_W / 2 + 0.04), y: DOOR_H / 2, z: zb, mat: m.trim });
+            }
+            addBox(g, { w: DOOR_W + 0.16, h: 0.08, d: T + 0.06, x: dx, y: DOOR_H + 0.04, z: zb, mat: m.trim });
+        }
         for (const side of [1, -1]) {
             addBox(g, { w: T, h: H, d: depth, x: side * (halfW + T / 2), y: H / 2, z: depth / 2, mat: m.wall, collider: true });
             const fw = halfW + T - HALF;
@@ -170,6 +187,7 @@ export class Hotel {
             this.lightSpots.push(new THREE.Vector3(0, H - 0.4, lz), new THREE.Vector3(3, H - 0.4, lz));
         }
         this.lightSpots.push(new THREE.Vector3(0, H - 0.6, depth - 2));     // lights the paint board
+        this.lightSpots.push(...this.showroom.lightSpots);
 
         // lobby computer against the right wall, facing into the lobby: start a new thread
         buildComputerDesk(g, m, this.lobbyStation, { x: halfW - 0.5, z: 3, rotY: -Math.PI / 2, onChange: () => { this.dirty = true; } });
@@ -480,6 +498,7 @@ export class Hotel {
         if (this.leverPivot) this.leverPivot.rotation.x = this.leverAngle;
         for (const m of this.pictureModels) m.rotation.y += dt * PICTURE_MODEL.SPIN;
         if (this.spin) this.updateSlots(dt);
+        this.showroom.update(dt, playerPos);
         for (const room of this.rooms) {
             room.update(dt, playerPos);
             // lazy-load replies when the player gets close to the door

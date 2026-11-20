@@ -235,6 +235,7 @@ function interact() {
     if (target.type === 'picture') changePicture(target.slot);
     if (target.type === 'lever') pullLever();
     if (target.type === 'board') startPainting();
+    if (target.type === 'animButton') hotel.showroom.press();
 }
 
 // ---------------------------------------------------------------- painting on the lobby board
@@ -380,20 +381,22 @@ renderer.domElement.addEventListener('mousedown', (e) => {
 });
 
 // Phones at a computer: a tap on the screen must NOT take focus away from the typing box
-// (that closes the keyboard), so the touch's default is cancelled and the tap handled here.
-// The keyboard is (re)opened on the finger's release: phones only open it for a real tap.
+// (that closes the keyboard), so the touch's default is cancelled here...
 renderer.domElement.addEventListener('pointerdown', (e) => {
     if (state !== 'seated' || e.pointerType === 'mouse') return;
     e.preventDefault();
-    if (!tween) clickScreen(e);
 });
+// ...and the tap is handled on the finger's RELEASE: phones only let a page open the file
+// picker (ATTACH / ROOM SCAN) or the keyboard from a release, never from a touch-down.
 renderer.domElement.addEventListener('pointerup', (e) => {
-    if (state === 'seated' && e.pointerType !== 'mouse' && !tween) terminal.focus();
+    if (state !== 'seated' || e.pointerType === 'mouse' || tween) return;
+    if (clickScreen(e) !== 'picker') terminal.focus();     // the file picker opening: leave the keyboard shut
 });
 $('seat-exit').addEventListener('click', () => standUp());
 $('seat-keyboard').addEventListener('click', () => terminal.focus());
 
 // Sitting at a computer: a click on its screen picks a field / presses POST.
+// Returns what terminal.clickAt() returns ('picker' when it opened the file picker).
 const mouseNdc = new THREE.Vector2();
 const screenRay = new THREE.Raycaster();
 function clickScreen(e) {
@@ -405,7 +408,7 @@ function clickScreen(e) {
     const hit = screenRay.intersectObject(screen, false)[0];
     if (!hit?.uv) return;
     const { width, height } = terminal.station.canvas;
-    terminal.clickAt(hit.uv.x * width, (1 - hit.uv.y) * height);
+    return terminal.clickAt(hit.uv.x * width, (1 - hit.uv.y) * height);
 }
 
 // reading a reply in full
