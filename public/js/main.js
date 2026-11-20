@@ -311,7 +311,7 @@ for (const type of ['pointerup', 'pointercancel']) {
 }
 
 // ---------------------------------------------------------------- the lobby lever
-// Flips it and asks the server for a random uploaded image / .obj in every frame.
+// Flips it and asks the server for a random uploaded image in every frame.
 // The result comes back to us AND to everyone else (live), each applied once by its id.
 const shufflesSeen = new Set();
 let pulling = false;

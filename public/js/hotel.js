@@ -32,16 +32,17 @@ const LIGHT_POOL = 6;     // a few real lights that follow the player (cheap)
 // Anyone can press E at a picture to hang their own image in that frame instead.
 const PICTURE = { H: 1.4, Y: 1.6, FRAME: 0.06 };     // picture height (m), centre height, frame border
 const PICTURE_MODEL = { SIZE: 0.8, OUT: 0.45, SPIN: 0.6 };   // an .obj in a frame: size (m), how far it floats out, spin speed
-// Frames only load their picture / model when the player is this close (m), and pictures
-// are scaled down to PICTURE_MAX px: a full-size phone photo is far more than a 1.4 m frame needs.
-const PICTURE_LOAD_DISTANCE = 12;
+// Frames only load their picture / model when the player is this close (m): as far as you
+// can see (the fog's far end, main.js), so everything in view down the corridor is filled in.
+// Pictures are scaled down to PICTURE_MAX px: a full-size phone photo is far more than a 1.4 m frame needs.
+const PICTURE_LOAD_DISTANCE = 45;
 const PICTURE_MAX = 1024;
 const ROOM_WAKE_DISTANCE = 4;     // a room's 3D models load when the player is this close to its door (or inside)
 
 // THE LEVER: on the lobby's right wall, just right of where you spawn. Flipping it
-// gives every frame a random uploaded image or .obj, with a slot-machine spin in every frame first.
+// gives every frame a random uploaded image, with a slot-machine spin in every frame first.
 const LEVER = { z: 5.4, y: 1.2, ANGLE: 0.6 };     // position along the right wall; handle swings +-ANGLE (up / down)
-const SLOTS = { SPIN: 1.4, STAGGER: 0.25, MAX_TOTAL: 4, LOOPS: 6, HOLD: 0.4, TILE: 256 };   // reel timings (s) and tile size (px)
+const SLOTS = { SPIN: 1.4, STAGGER: 0.25, MAX_TOTAL: 4, LOOPS: 6, HOLD: 0.4, TILE: 256, PRELOAD_WAIT: 2.5 };   // reel timings (s), tile size (px), max wait for the reel's pictures (s)
 const LOBBY_SPOTS = [                                // x, z, rotY (which way it faces)
     { x: -LOBBY.halfW, z: 3, rotY: Math.PI / 2 },         // left wall, facing the lobby computer
     { x: -LOBBY.halfW, z: 8, rotY: Math.PI / 2 },         // left wall, further back
@@ -485,15 +486,25 @@ export class Hotel {
     }
 
     // ------------------------------------------------------------------ slot machine (the lever)
-    // Every frame spins like a slot-machine reel, the reels stop one after another, each
-    // on its new picture, then the real pictures (and .obj models) appear.
+    // Every frame spins like a slot-machine reel of the real new pictures, the reels stop
+    // one after another, each on its new picture, then the pictures hang for real.
     // pictures: [{ slot, url, model }] from the server.
-    startSlots(pictures) {
+    async startSlots(pictures) {
+        const token = (this.slotsToken = {});
+        // the reel: one tile per different new picture (at most 16, at least 4: repeated if needed)
+        let tiles = [...new Set(pictures.filter((p) => p.url && !p.model).map((p) => p.url))].slice(0, 16);
+        // load the reel's pictures first (they're also what the frames show afterwards), so it
+        // spins real pictures. Never waits longer than PRELOAD_WAIT: a slow one is a plain tile.
+        const textures = tiles.map((url) => this.pictureTexture(url));
+        await Promise.race([
+            Promise.all(textures.map((tex) => (tex.image?.width ? null : new Promise((done) => tex.userData.ready.push(done))))),
+            new Promise((done) => setTimeout(done, SLOTS.PRELOAD_WAIT * 1000)),
+        ]);
+        if (this.slotsToken !== token) return;          // another pull came in meanwhile: that one wins
         if (this.spin) this.finishSlots();              // a new pull while spinning: land the old one first
         const bySlot = new Map(pictures.map((p) => [p.slot, p]));
-        // the reel: one tile per different new picture (at least 4, repeated if needed)
-        let tiles = [...new Map(pictures.map((p) => [p.url, p])).values()].slice(0, 16);
-        while (tiles.length < 4) tiles = tiles.concat(tiles.length ? tiles : [{ url: null }]);
+        if (!tiles.length) tiles = [null];
+        while (tiles.length < 4) tiles = tiles.concat(tiles);
         const N = tiles.length, T = SLOTS.TILE;
         const canvas = document.createElement('canvas');
         canvas.width = T;
@@ -501,34 +512,22 @@ export class Hotel {
         const g = canvas.getContext('2d');
         const reel = new THREE.CanvasTexture(canvas);
         reel.colorSpace = THREE.SRGBColorSpace;
-        tiles.forEach((tile, i) => {
-            g.fillStyle = `hsl(${(i * 67) % 360} 70% 55%)`;
+        tiles.forEach((url, i) => {
+            g.fillStyle = `hsl(${(i * 67) % 360} 45% 40%)`;    // shows only if its picture didn't load in time
             g.fillRect(0, i * T, T, T);
-            g.fillStyle = '#ffffff';
-            g.font = `bold ${T * 0.45}px ${FONTS.MONO}`;
-            g.textAlign = 'center';
-            g.textBaseline = 'middle';
-            g.fillText(tile.model ? '3D' : '?', T / 2, i * T + T / 2);
-            if (!tile.url || tile.model) return;
-            const draw = (img) => {                      // cover the tile, keep the image's shape
-                const s = Math.max(T / img.width, T / img.height);
-                g.save();
-                g.beginPath(); g.rect(0, i * T, T, T); g.clip();
-                g.drawImage(img, (T - img.width * s) / 2, i * T + (T - img.height * s) / 2, img.width * s, img.height * s);
-                g.restore();
-                reel.needsUpdate = true;
-            };
-            const loaded = this.pictureTextures.get(tile.url)?.image;   // already on a wall: draw it right away
-            if (loaded?.width) return draw(loaded);
-            const img = new Image();
-            img.onload = () => draw(img);
-            img.src = tile.url;
+            const img = url && this.pictureTextures.get(url)?.image;
+            if (!img?.width) return;
+            const s = Math.max(T / img.width, T / img.height);  // cover the tile, keep the picture's shape
+            g.save();
+            g.beginPath(); g.rect(0, i * T, T, T); g.clip();
+            g.drawImage(img, (T - img.width * s) / 2, i * T + (T - img.height * s) / 2, img.width * s, img.height * s);
+            g.restore();
         });
 
         const step = Math.min(SLOTS.STAGGER, (SLOTS.MAX_TOTAL - SLOTS.SPIN) / Math.max(1, this.frames.length));
         const reels = this.frames.map((fr, i) => {
             const target = bySlot.get(fr.slot);
-            const k = target ? Math.max(0, tiles.findIndex((t) => t.url === target.url)) : i % N;
+            const k = target ? Math.max(0, tiles.indexOf(target.url)) : i % N;
             const map = reel.clone();
             map.wrapT = THREE.RepeatWrapping;
             map.repeat.set(1, 1 / N);

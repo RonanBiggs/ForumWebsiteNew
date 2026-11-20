@@ -257,12 +257,12 @@ export async function getWallPictures() {
     return Object.fromEntries(rows.map((r) => [r.slot, { url: 'api/images/' + r.image_id, model: r.mime === 'model/obj' }]));
 }
 
-// The lever: every slot gets a random image or .obj from everything uploaded
+// The lever: every slot gets a random IMAGE from everything uploaded (no 3D models)
 // (no repeats until the pool runs out). Returns [{ slot, url, model }], or null if nothing's uploaded.
 export function shuffleWallPictures(slots) {
     return transaction(async (db) => {
         const { rows: pool_ } = await db.query(
-            "SELECT image_id, mime FROM images WHERE mime LIKE 'image/%' OR mime = 'model/obj'");
+            "SELECT image_id, mime FROM images WHERE mime LIKE 'image/%'");
         if (!pool_.length) return null;
         let bag = [];
         const picks = slots.map(() => {
